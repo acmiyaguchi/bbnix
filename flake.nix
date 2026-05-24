@@ -35,12 +35,20 @@
           sysroot = sysrootRoot;
           langCxx = false;
         };
+
+        # Full C/C++ cross-compiler (libgcc + libstdc++) for milestone M3.
+        gcc = pkgs.callPackage ./toolchain/gcc.nix {
+          inherit binutils;
+          target = qnxTarget;
+          sysroot = sysrootRoot;
+          langCxx = true;
+        };
       in {
         # Recipes live under toolchain/ and pkgs/ and are wired in here as they
         # land. Sequence (see README): toolchain PoC -> ncurses -> openssh ->
         # tmux + mosh-client -> busybox subset.
         packages = {
-          inherit binutils gcc-stage1;
+          inherit binutils gcc-stage1 gcc;
         };
 
         devShells.default = pkgs.mkShell {
