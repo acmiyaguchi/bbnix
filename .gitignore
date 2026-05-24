@@ -1,0 +1,18 @@
+# Nix build outputs
+result
+result-*
+
+# Never commit the proprietary sysroot or any extracted target tree
+sysroot/
+bbndk-linux/
+
+# Build artifacts
+*.o
+*.a
+*.so
+*.bar
+
+# Local/editor
+.direnv/
+.env
+.env.*
