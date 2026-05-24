@@ -1,0 +1,43 @@
+--- a/gcc/config.gcc	2026-05-24 00:55:28.822456775 -0700
++++ b/gcc/config.gcc	2026-05-24 02:16:23.816907980 -0700
+@@ -1209,6 +1209,22 @@
+ 	tmake_file="${tmake_file} arm/t-arm arm/t-bpabi arm/t-phoenix"
+ 	target_cpu_cname="arm7tdmi"
+ 	;;
++arm*-*-nto-qnx*)			# ARM QNX Neutrino / BlackBerry 10 (bbnix)
++	tm_file="dbxelf.h tm-dwarf2.h elfos.h nto-stdint.h arm/elf.h arm/aout.h"
++	tm_file="$tm_file nto.h arm/bpabi.h arm/nto-eabi.h arm/arm.h"
++	tmake_file="${tmake_file} arm/t-arm arm/t-nto arm/t-bpabi"
++	extra_options="${extra_options} arm/nto.opt nto.opt"
++	target_cpu_cname="cortex-a9"
++	need_64bit_hwint=yes
++	use_gcc_stdint=wrap
++	gnu_ld=yes
++	gas=yes
++	case x${enable_threads} in
++	x | xyes | xpthreads | xposix)
++		thread_file='posix'
++		;;
++	esac
++	;;
+ arm*-*-eabi* | arm*-*-symbianelf* | arm*-*-rtems* | arm*-*-fuchsia*)
+ 	case ${target} in
+ 	arm*eb-*-eabi*)
+--- a/libgcc/config.host	2026-05-24 00:55:29.097454319 -0700
++++ b/libgcc/config.host	2026-05-24 02:16:23.817058119 -0700
+@@ -462,6 +462,15 @@
+ 	extra_parts="crtbegin.o crtend.o crti.o crtn.o"
+ 	unwind_header=config/arm/unwind-arm.h
+ 	;;
++arm*-*-nto-qnx*)			# ARM QNX Neutrino / BlackBerry 10 (bbnix)
++	tmake_file="${tmake_file} arm/t-arm arm/t-elf arm/t-bpabi t-fixedpoint-gnu-prefix t-libgcc-pic t-crtstuff-pic"
++	tmake_file="$tmake_file t-softfp-sfdf t-softfp-excl arm/t-softfp t-softfp"
++	tm_file="$tm_file arm/bpabi-lib.h"
++	unwind_header=config/arm/unwind-arm.h
++	# crti.o/crtn.o come from the QNX sysroot; build crtbegin/crtend plus the
++	# PIC crtbeginS/crtendS variants (t-crtstuff-pic) needed for PIE (BB10 default).
++	extra_parts="crtbegin.o crtbeginS.o crtend.o crtendS.o"
++	;;
+ arm*-*-eabi* | arm*-*-symbianelf* | arm*-*-rtems*)
+ 	tmake_file="${tmake_file} arm/t-arm arm/t-elf t-fixedpoint-gnu-prefix"
+ 	tm_file="$tm_file arm/bpabi-lib.h"

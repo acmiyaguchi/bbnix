@@ -27,12 +27,20 @@
           target = qnxTarget;
           sysroot = sysrootRoot;
         };
+
+        # Stage 1: C-only cross-compiler (libgcc) for milestones M1/M2.
+        gcc-stage1 = pkgs.callPackage ./toolchain/gcc.nix {
+          inherit binutils;
+          target = qnxTarget;
+          sysroot = sysrootRoot;
+          langCxx = false;
+        };
       in {
         # Recipes live under toolchain/ and pkgs/ and are wired in here as they
         # land. Sequence (see README): toolchain PoC -> ncurses -> openssh ->
         # tmux + mosh-client -> busybox subset.
         packages = {
-          inherit binutils;
+          inherit binutils gcc-stage1;
         };
 
         devShells.default = pkgs.mkShell {
