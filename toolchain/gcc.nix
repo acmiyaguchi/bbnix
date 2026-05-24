@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # Forward-ported GCC 9 cross-compiler for arm-unknown-nto-qnx8.0.0eabi
 # (BlackBerry 10 / QNX 8 ARM).
 #
@@ -10,9 +11,18 @@
 # __noChroot. Build with:  nix build --option sandbox relaxed .#gcc
 #
 # Staged: langCxx=false builds a C-only stage1 (libgcc only) -> milestones M1/M2.
-#         langCxx=true additionally builds GCC's own libstdc++ -> milestone M3.
+#         langCxx=true builds the C++ compiler (cc1plus) + libgcc but NOT a C++
+#         standard library: the BB10/QNX sysroot already ships a complete,
+#         working libstdc++ 4.8.3 (headers under usr/include/c++/4.8.3 + the
+#         armle-v7 libstdc++.so.6.0.19) that was built to coexist with QNX's
+#         Dinkumware C headers. We point g++ at those headers via gxxIncludeDir
+#         and link the device's libstdc++ -> milestone M3. This sidesteps the
+#         intractable task of rebuilding GCC 9's own libstdc++ against QNX's
+#         _STD_USING namespace machinery, and yields an ABI that matches the
+#         device exactly.
 {
   stdenv,
+  lib,
   fetchurl,
   gmp,
   mpfr,
@@ -28,9 +38,10 @@
   sysroot,
   version ? "9.5.0",
   langCxx ? false,
-  # Debug aid: build only the compiler + libgcc (skip libstdc++) to get a fast,
-  # testable g++ for iterating on header/spec issues.
-  buildLibsOnly ? false,
+  # Path to the sysroot's prebuilt C++ headers (e.g. <qnx6>/usr/include/c++/4.8.3).
+  # When set (with langCxx), g++ uses these headers + the sysroot's libstdc++
+  # and GCC's own libstdc++ is NOT built.
+  gxxIncludeDir ? null,
 }:
 
 stdenv.mkDerivation {
@@ -58,44 +69,26 @@ stdenv.mkDerivation {
     cp ${./files/gcc9}/arm/nto.opt    gcc/config/arm/nto.opt
     cp ${./files/gcc9}/arm/t-nto      gcc/config/arm/t-nto
 
-    # libstdc++ QNX config, replicating the BlackBerry/QNX GCC 4.9 donor that
-    # successfully built libstdc++ against these exact headers:
-    #   configure.host: c_model=c + c_compatibility=yes (the c-compatibility
-    #     header model -- include/c/<cmath> #undefs the C math macros and defines
-    #     clean std:: overloads). The donor glob nto-qnx[68]* already matches
-    #     nto-qnx8; add a case mirroring it (no autoreconf -- plain shell).
-    sed -i '/^  qnx6\.\[12\]\*)/i\  nto-qnx* | qnx[78]*)\n    os_include_dir="os/qnx/qnx6.1"\n    c_model=c\n    c_compatibility=yes\n    ;;' \
-      libstdc++-v3/configure.host
-    #   os_defines.h: the donor's QNX defines (pthreads in libc; enable QNX ext).
-    sed -i '/#define _GLIBCXX_OS_DEFINES 1/a #define _GLIBCXX_GTHREAD_USE_WEAK 0\n#define _QNX_SOURCE 1' \
-      libstdc++-v3/config/os/qnx/qnx6.1/os_defines.h
-    #   crossconfig.m4 / generated configure: the cross AC_DEFINE(HAVE_*) stanza,
-    #   keyed on $host (donor matches *-qnx8*).
-    sed -i 's/\*-qnx6\.1\* | \*-qnx6\.2\*)/*-qnx6.1* | *-qnx6.2* | *-nto-qnx* | *-qnx[78]*)/' \
-      libstdc++-v3/configure libstdc++-v3/crossconfig.m4
-
-    # QNX <ctype.h> defines short mask macros (_UP, _LO, ...) that persist after
-    # ctype_base.h captures them, colliding with libstdc++ identifiers (e.g. _UP
-    # in <bits/unique_ptr.h>). Undefine them after ctype_base.h.
-    printf '\n#undef _UP\n#undef _LO\n#undef _DI\n#undef _SP\n#undef _PU\n#undef _CN\n#undef _XD\n#undef _BB\n#undef _XS\n#undef _XA\n#undef _XB\n' \
-      >> libstdc++-v3/config/os/qnx/qnx6.1/ctype_base.h
+    # NOTE: we do NOT build GCC 9's own libstdc++ -- the QNX sysroot supplies a
+    # complete, working libstdc++ 4.8.3. So the donor's libstdc++ QNX porting
+    # (configure.host c_model, crossconfig, ctype/namespace reconciliation) is
+    # intentionally absent here; see the file header. The stddef delegation
+    # below still matters: it governs how GCC's <stddef.h> behaves when *user*
+    # C++ code (and libgcc) pulls in QNX headers.
 
     # QNX's <sys/platform.h>/<sys/compiler_gnu.h> predefine GCC's own stddef.h
     # guard markers (_GCC_PTRDIFF_T/_GCC_SIZE_T/_GCC_WCHAR_T, "to override the
     # gcc local include files") plus the __*_T type signals, expecting QNX's
     # own <stddef.h> to provide size_t/ptrdiff_t/wchar_t. GCC's stddef.h shadows
-    # QNX's, so it honours the markers, skips its typedefs, and the types are
-    # never declared -- breaking the libstdc++ build (cxxabi.h, time.h).
+    # QNX's, so it honours the markers, skips its typedefs, and the types end up
+    # never declared -- breaking C++ compiles that pull in QNX headers (e.g. the
+    # device's <cstddef>, cxxabi, <ctime>).
     #
-    # Mirror the QNX-patched GCC: when a QNX header has run first (detected via
-    # _GCC_SIZE_T), defer to QNX's <stddef.h> via #include_next -- it consumes
-    # its own __*_T signals coherently. Otherwise (e.g. libgcc, which includes
-    # <stddef.h> with no QNX header in scope) use GCC's own definitions.
-    # When a QNX header has run first (detected via _GCC_SIZE_T from
-    # <sys/compiler_gnu.h>), delegate to QNX's own <stddef.h> -- it consumes its
-    # __PTRDIFF_T/__SIZE_T signals coherently and defines size_t/ptrdiff_t/
-    # wchar_t. (GCC's body can't: QNX's _GCC_PTRDIFF_T etc. make it skip them.)
-    # Otherwise (e.g. libgcc, no QNX header in scope) use GCC's own definitions.
+    # Fix (mirroring the QNX-patched GCC): when a QNX header has run first
+    # (detected via _GCC_SIZE_T from <sys/compiler_gnu.h>), delegate to QNX's
+    # own <stddef.h> via #include_next -- it consumes its __PTRDIFF_T/__SIZE_T
+    # signals coherently and defines size_t/ptrdiff_t/wchar_t. Otherwise (e.g.
+    # libgcc, no QNX header in scope) use GCC's own definitions.
     # Two gaps QNX's 2014 stddef leaves vs GCC 9 / C++11 are filled here:
     #   - max_align_t (libstdc++ <cstddef> does `using ::max_align_t`);
     #   - offsetof, which GCC's stddef only defines on a full include (no
@@ -133,29 +126,36 @@ stdenv.mkDerivation {
       --with-ld=${binutils}/bin/${target}-ld \
       --disable-multilib \
       --disable-nls --disable-werror \
-      --disable-libssp --disable-tls --disable-libstdcxx-pch \
+      --disable-libssp --disable-tls \
       --enable-__cxa_atexit --enable-gnu-indirect-function \
       --with-arch=armv7-a --with-float=softfp --with-fpu=vfpv3-d16 --with-mode=thumb \
       --enable-languages=${if langCxx then "c,c++" else "c"} \
       --enable-shared \
+      ${lib.optionalString (gxxIncludeDir != null) "--with-gxx-include-dir=${gxxIncludeDir}"} \
       MAKEINFO=true
     runHook postConfigure
   '';
 
+  # Build the compiler + libgcc only. With langCxx this still produces cc1plus/
+  # g++ for C++ sources; we never build GCC's own libstdc++ (the C++ runtime is
+  # the QNX sysroot's libstdc++ 4.8.3 -- see the file header).
   buildPhase = ''
     runHook preBuild
-    make $makeFlags ${if buildLibsOnly then "all-gcc all-target-libgcc" else ""}
+    make $makeFlags all-gcc all-target-libgcc
     runHook postBuild
   '';
 
   installPhase = ''
     runHook preInstall
-    make ${if buildLibsOnly then "install-gcc install-target-libgcc" else "install"}
+    make install-gcc install-target-libgcc
     runHook postInstall
   '';
 
   meta = {
     description = "GCC ${version} cross-compiler for BlackBerry 10 / QNX 8 ARM (${target})";
+    # License of the built artifact (GCC; GPLv3+ with the Runtime Library
+    # Exception on libgcc), not of this recipe (MIT).
+    license = lib.licenses.gpl3Plus;
     platforms = [ "x86_64-linux" ];
   };
 }

@@ -17,7 +17,10 @@ You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
 
-/* bbnix: forward-ported from the BlackBerry/QNX GCC 4.9 fork onto GCC 9.
+/* SPDX-License-Identifier: GPL-3.0-or-later
+
+   Modified by bbnix in 2026: forward-ported to GCC 9 from the BlackBerry/QNX
+   GCC 4.9 fork (github.com/berryfarm/gcc, branch gcc-4.9).
 
    Adapted for a Nix cross build with --with-sysroot=<qnx6>:
      - All library/CRT search paths now use the GCC spec escape %R (the
@@ -68,14 +71,18 @@ do {                                            \
 
 /* Link-time library search and rpath-link, anchored at the sysroot.  These
    are not recorded in the output binary (no RUNPATH leakage).  */
-/* %v1.%v2.%v3 (the donor's compiler-version spec) was removed in GCC 9, and we
-   build our own libgcc/libstdc++ anyway, so the sysroot's lib/gcc/<ver> dir is
-   not referenced.  */
+/* The donor's %v1.%v2.%v3 compiler-version spec was removed in GCC 9.  We build
+   our own libgcc (found via the compiler exec prefix, not here), but we reuse
+   the *device's* libstdc++ 4.8.3, whose linker-name symlink lives in the
+   sysroot's lib/gcc/4.8.3 dir (libstdc++.so -> ../../libstdc++.so.6).  Add that
+   dir so the g++ driver's implicit `-lstdc++' resolves to the device's
+   libstdc++.so.6, matching the headers in usr/include/c++/4.8.3.  */
 #define QNX_SYSTEM_LIBDIRS \
-"-L%R/armle-v7/lib \
+"-L%R/armle-v7/lib/gcc/4.8.3 \
+ -L%R/armle-v7/lib \
  -L%R/armle-v7/usr/lib \
  -L%R/armle-v7/opt/lib \
- -rpath-link %R/armle-v7/lib:%R/armle-v7/usr/lib:%R/armle-v7/opt/lib "
+ -rpath-link %R/armle-v7/lib/gcc/4.8.3:%R/armle-v7/lib:%R/armle-v7/usr/lib:%R/armle-v7/opt/lib "
 
 #undef LIB_SPEC
 #define LIB_SPEC \

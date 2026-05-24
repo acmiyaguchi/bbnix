@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 {
   description = "bbnix — a minimal, from-source cross-build userland for BlackBerry 10 / QNX 8 (armle-v7)";
 
@@ -36,12 +37,16 @@
           langCxx = false;
         };
 
-        # Full C/C++ cross-compiler (libgcc + libstdc++) for milestone M3.
+        # Full C/C++ cross-compiler for milestone M3. We build cc1plus + libgcc
+        # but reuse the sysroot's own libstdc++ 4.8.3 (headers + armle-v7 .so)
+        # rather than rebuilding GCC 9's against QNX's Dinkumware headers --
+        # matching the device ABI and avoiding the _STD_USING namespace war.
         gcc = pkgs.callPackage ./toolchain/gcc.nix {
           inherit binutils;
           target = qnxTarget;
           sysroot = sysrootRoot;
           langCxx = true;
+          gxxIncludeDir = "${sysrootRoot}/usr/include/c++/4.8.3";
         };
       in {
         # Recipes live under toolchain/ and pkgs/ and are wired in here as they

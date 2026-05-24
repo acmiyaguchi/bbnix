@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
 # bbnix toolchain validation (milestones M1/M2/M3).
 #
 # Usage: validate.sh <gcc-prefix> <binutils-prefix> [c|cpp]
@@ -44,6 +45,11 @@ case "$crt1" in
 esac
 
 echo "== M2/M3: compile + link $MODE =="
+# NB (cpp): binutils 2.41 ld prints ".dynsym local symbol at index N (>= sh_info)"
+# warnings when linking the device's 2014 libstdc++.so -- its dynamic symbol
+# table predates the local-before-global ELF convention modern bfd expects. The
+# link succeeds and the binary is valid; this is benign noise from a prebuilt
+# lib we don't control, not a failure.
 "$CC" -o "$out" "$SRC"
 echo "  built $out"
 
