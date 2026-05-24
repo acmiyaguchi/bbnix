@@ -68,13 +68,6 @@ do {                                            \
         builtin_assert ("system=nto");          \
         builtin_assert ("system=qnxnto");       \
         builtin_define ("__PRAGMA_PACK_PUSH_POP__");	\
-	/* QNX's <math.h>/<string.h>/<stdlib.h>/<wchar.h> supply the C++ \
-	   overloads of the C library functions, so libstdc++'s <cmath>/<cstring>/ \
-	   <cstdlib>/<cwchar> must not redefine them. */			\
-	builtin_define ("__CORRECT_ISO_CPP_MATH_H_PROTO");	\
-	builtin_define ("__CORRECT_ISO_CPP_STRING_H_PROTO");	\
-	builtin_define ("__CORRECT_ISO_CPP_STDLIB_H_PROTO");	\
-	builtin_define ("__CORRECT_ISO_CPP_WCHAR_H_PROTO");	\
 	GNU_INDIRECT_FUNCTION			\
     } while (0)
 
