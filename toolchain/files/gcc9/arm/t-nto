@@ -1,1 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# GCC ARM/QNX Makefile fragment, redistributed verbatim from the BlackBerry/QNX
+# GCC 4.9 fork (github.com/berryfarm/gcc, branch gcc-4.9). Part of GCC; GPLv3+.
 T_CPPFLAGS=-DTARGET_ALIAS=\"$(target_alias)\"

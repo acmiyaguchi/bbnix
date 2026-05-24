@@ -1,3 +1,10 @@
+SPDX-License-Identifier: GPL-3.0-or-later
+bbnix: adds the arm*-*-nto-qnx* target to GCC 9's gcc/config.gcc and
+libgcc/config.host. Authored by bbnix in 2026, modelled on the BlackBerry/QNX
+GCC 4.9 fork (github.com/berryfarm/gcc, branch gcc-4.9). Modifies GCC source;
+GPL-3.0-or-later, like GCC. (Leading lines before the first hunk are ignored by
+patch(1).)
+
 --- a/gcc/config.gcc	2026-05-24 00:55:28.822456775 -0700
 +++ b/gcc/config.gcc	2026-05-24 02:16:23.816907980 -0700
 @@ -1209,6 +1209,22 @@

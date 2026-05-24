@@ -1,0 +1,61 @@
+# bbnix — licensing and provenance
+
+bbnix is a Nix build recipe for a from-source cross-toolchain and userland
+targeting BlackBerry 10 / QNX 8 ARM (arm-unknown-nto-qnx8.0.0eabi). It mixes
+two licenses. This file states which is which.
+
+## MIT — bbnix-original code
+
+Copyright (c) 2026 Anthony Miyaguchi. Licensed under the MIT License (see
+LICENSE). This covers the build glue and project files authored for bbnix:
+
+  - flake.nix, flake.lock
+  - toolchain/binutils.nix
+  - toolchain/gcc.nix
+  - checks/*           (validate.sh, hello.c, hello.cpp)
+  - README.md, and other project docs
+
+## GPL-3.0-or-later — GCC-derived material
+
+The following are GCC source files (or diffs against GCC source) and remain
+under the GNU General Public License, version 3 or (at your option) any later
+version — the terms GCC itself uses. The full text is in COPYING3; the GCC
+Runtime Library Exception text is in COPYING.RUNTIME. Each file retains its
+original FSF copyright and license notice. The material derives from the
+BlackBerry/QNX GCC 4.9 fork (github.com/berryfarm/gcc, branch gcc-4.9), itself
+a GPL fork of GCC.
+
+Adapted by bbnix in 2026 (carry a dated "Modified by bbnix" / SPDX notice):
+  - toolchain/files/gcc9/nto.h
+  - toolchain/files/gcc9/arm/nto-eabi.h
+  - toolchain/patches/gcc9-arm-nto-core.patch   (bbnix-authored diff adding the
+                                                  arm*-*-nto-qnx* target to
+                                                  gcc/config.gcc and
+                                                  libgcc/config.host)
+
+Redistributed verbatim from the donor (unmodified; notices preserved):
+  - toolchain/files/gcc9/nto.opt
+  - toolchain/files/gcc9/nto-stdint.h   (carries the GCC Runtime Library
+                                          Exception, version 3.1)
+  - toolchain/files/gcc9/arm/nto.opt
+  - toolchain/files/gcc9/arm/t-nto       (trivial Makefile fragment)
+
+These are compiler-side target descriptions that are part of GCC; they contain
+no proprietary QNX/BlackBerry sysroot material.
+
+## Not included — the proprietary QNX 8 / BB10 sysroot
+
+bbnix builds *against* the BlackBerry 10 Native SDK target tree
+(target_10_3_1_995: C/C++ headers, libc, the prebuilt libstdc++ 4.8.3, CRT
+objects). That tree is proprietary and is NOT distributed with bbnix. It is
+gitignored and supplied by the user at build time ("bring your own sysroot").
+No proprietary bytes enter git. Under the default Model A (impure path) build,
+none enter the Nix store either; the alternative Model B (requireFile) ingests
+the sysroot into the store as an `unfree`-marked, content-addressed input — by
+explicit user choice.
+
+## Build outputs
+
+Binaries compiled with this toolchain are governed by the licenses of their own
+sources plus the GCC Runtime Library Exception (which permits non-GPL output);
+they are not made GPL merely by being built with GCC.

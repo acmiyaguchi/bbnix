@@ -17,8 +17,10 @@ You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
 
-/* bbnix: forward-ported from the BlackBerry/QNX GCC 4.9 fork
-   (github.com/berryfarm/gcc, branch gcc-4.9) onto GCC 9.
+/* SPDX-License-Identifier: GPL-3.0-or-later
+
+   Modified by bbnix in 2026: forward-ported to GCC 9 from the BlackBerry/QNX
+   GCC 4.9 fork (github.com/berryfarm/gcc, branch gcc-4.9).
 
    Adapted for a Nix cross build:
      - Removed GCC_DRIVER_HOST_INITIALIZATION (it required $QNX_HOST/$QNX_TARGET

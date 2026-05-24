@@ -91,3 +91,12 @@ pkgs/          # ncurses, openssh, mosh, tmux, busybox recipes
 nix develop                 # enters the bbnix shell; reports target + sysroot
 BBNIX_SYSROOT=/path nix develop   # override the BYO sysroot location
 ```
+
+## License
+
+bbnix-original code (the Nix recipes, flake, and checks) is MIT (see `LICENSE`).
+The GCC target-config files under `toolchain/files/gcc9/` and the patch under
+`toolchain/patches/` are GPL-3.0-or-later GCC-derived source, forward-ported
+from the BlackBerry/QNX GCC 4.9 fork (full texts in `COPYING3` and
+`COPYING.RUNTIME`); see `NOTICE` for the exact split. The proprietary QNX/BB10
+sysroot is never distributed — bring your own.

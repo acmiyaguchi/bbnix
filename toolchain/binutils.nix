@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # Cross binutils for arm-unknown-nto-qnx8.0.0eabi (BlackBerry 10 / QNX 8 ARM).
 #
 # Mainline binutils 2.41 already supports the triple with no patches:
@@ -9,6 +10,7 @@
 # path; this derivation stays pure/sandboxed (no proprietary bytes required).
 {
   stdenv,
+  lib,
   fetchurl,
   target ? "arm-unknown-nto-qnx8.0.0eabi",
   # Sysroot path is recorded into binutils' default search root. Passed as a
@@ -51,6 +53,8 @@ stdenv.mkDerivation rec {
 
   meta = {
     description = "GNU binutils cross-targeting BlackBerry 10 / QNX 8 ARM (${target})";
+    # License of the built artifact (GNU binutils), not of this recipe (MIT).
+    license = lib.licenses.gpl3Plus;
     platforms = [ "x86_64-linux" ];
   };
 }
