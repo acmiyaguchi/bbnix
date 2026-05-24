@@ -18,11 +18,22 @@
         defaultSysroot = "/mnt/data/fun/bbdev/sdk/bbndk-linux";
 
         qnxTarget = "arm-unknown-nto-qnx8.0.0eabi";
+
+        # The QNX target tree passed as --with-sysroot. Headers live under
+        # <sysrootRoot>/usr/include; ARM libs/CRT under <sysrootRoot>/armle-v7/lib.
+        sysrootRoot = "${defaultSysroot}/target_10_3_1_995/qnx6";
+
+        binutils = pkgs.callPackage ./toolchain/binutils.nix {
+          target = qnxTarget;
+          sysroot = sysrootRoot;
+        };
       in {
         # Recipes live under toolchain/ and pkgs/ and are wired in here as they
         # land. Sequence (see README): toolchain PoC -> ncurses -> openssh ->
         # tmux + mosh-client -> busybox subset.
-        packages = { };
+        packages = {
+          inherit binutils;
+        };
 
         devShells.default = pkgs.mkShell {
           name = "bbnix";
