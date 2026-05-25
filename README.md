@@ -9,6 +9,9 @@ This is the **implementation** repo. Design discussion lives in `blackberry-meta
 is a separate checkout. Engineering detail — per-package build notes, deploy
 recipes, validation — lives in [`AGENTS.md`](AGENTS.md).
 
+> This repo is developed and maintained largely by LLM agents (hence `AGENTS.md`),
+> under human review. Expect commits and docs to reflect that.
+
 ## Scope
 
 | | |
