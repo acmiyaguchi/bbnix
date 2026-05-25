@@ -27,6 +27,9 @@ stdenv.mkDerivation rec {
   # current host compiler accepts the 2018 source.
   env.CXXFLAGS = "-include cstdint -std=gnu++14";
 
+  # We only consume protoc; static-link it and skip the shared-library outputs.
+  configureFlags = [ "--disable-shared" "--enable-static" ];
+
   enableParallelBuilding = true;
 
   meta = {

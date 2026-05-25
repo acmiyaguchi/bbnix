@@ -72,12 +72,10 @@ stdenv.mkDerivation (qnx.drvAttrs // rec {
     export OpenSSL_CFLAGS="-I${openssl}/include"
     export OpenSSL_LIBS="-L${openssl}/lib -lssl"
 
-    # C++ over libstdc++ 4.8.3: -include cstdint fixes the QNX std::size_t gap
-    # (see protobuf.nix) and cxxAbiFlags drops the C++14 sized delete.
+    # C++ over libstdc++ 4.8.3 (cstdintFlag/cxxAbiFlags: qnx-common). Plus
     # -include wcwidth_compat.h: QNX's <wchar.h> declares no wcwidth, which C++
-    # rejects (terminal.cc calls it). cstdint fixes the std::size_t gap (see
-    # protobuf.nix); cxxAbiFlags drops the C++14 sized delete.
-    export CXXFLAGS="-include cstdint -include wcwidth_compat.h ${qnx.cxxAbiFlags}"
+    # rejects (mosh's terminal.cc calls it).
+    export CXXFLAGS="${qnx.cstdintFlag} -include wcwidth_compat.h ${qnx.cxxAbiFlags}"
     # zlib.h for the C/C++ probes; all dependency -L on the link path (AC_CHECK_LIB
     # for -lz/-lcrypto link-tests, and the final exe). LIBS pulls libbbnixcompat
     # (wcwidth + __cxa_throw_bad_array_new_length) after the referencing objects.

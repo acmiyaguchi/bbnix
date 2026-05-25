@@ -44,23 +44,13 @@ stdenv.mkDerivation (qnx.drvAttrs // rec {
     mkdir -p stublib
     ${binutils}/bin/${target}-ar crs stublib/libpthread.a
 
-    # QNX size_t gap, C++ flavour. QNX's stddef.h defines std::size_t only via a
-    # fragile _STD_USING dance: if a plain C <stddef.h> is seen before std::size_t
-    # exists (protobuf's bytestream.h does exactly this), a later `using
-    # std::size_t` inside that header fails ("std::size_t not declared"). Force
-    # <cstdint> first: it pulls libstdc++'s <bits/c++config.h>, which defines
-    # std::size_t/std::ptrdiff_t straight from compiler builtins, so the QNX
-    # header's using-declaration always resolves (and it supplies the std::int*_t
-    # protobuf wants). The C prologue `-include stddef.h` instead *breaks* C++.
-    #
-    # CXXFLAGS (not CPPFLAGS): cstdint is C++-only, and configure feeds CPPFLAGS
-    # to its C compiler probe too ("C compiler cannot create executables").
-    # cxxAbiFlags (-fno-sized-deallocation): GCC 9 emits the C++14 sized
-    # operator delete, absent from libstdc++ 4.8.3 (qnx-common). libbbnixcompat
-    # supplies the other 4.9-era ABI gap (__cxa_throw_bad_array_new_length) --
-    # link it so a shared build resolves it (a static .a defers it to the mosh
-    # link, where compat is also present).
-    export CXXFLAGS="-include cstdint ${qnx.cxxAbiFlags}"
+    # cstdintFlag/cxxAbiFlags: the QNX std::size_t gap and the C++14 sized-delete
+    # gap over libstdc++ 4.8.3 (qnx-common). protobuf is what first surfaced both
+    # -- its bytestream.h includes a plain C <stddef.h> before any STL header.
+    # libbbnixcompat supplies the other 4.9-era ABI gap
+    # (__cxa_throw_bad_array_new_length) -- link it so a shared build resolves it
+    # (a static .a defers it to the mosh link, where compat is also present).
+    export CXXFLAGS="${qnx.cstdintFlag} ${qnx.cxxAbiFlags}"
     export LDFLAGS="-L$PWD/stublib -L${compat}/lib -lbbnixcompat"
 
     # --with-protoc: use the prebuilt host protoc to compile the bundled

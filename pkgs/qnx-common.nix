@@ -34,6 +34,16 @@
   # <stddef.h> first. See [[qnx-unistd-size-t-stddef-gap]].
   stddefFlag = "-include stddef.h";
 
+  # The C++ counterpart of stddefFlag. The C fix above (-include stddef.h)
+  # *breaks* C++: it poisons QNX's namespace-std typedefs (std::size_t "not
+  # declared"). QNX's stddef.h only defines std::size_t via a fragile
+  # _STD_USING dance, and a plain C <stddef.h> seen first (e.g. protobuf's
+  # bytestream.h) leaves a later `using std::size_t` undeclared. Force-include
+  # <cstdint>: it pulls libstdc++'s <bits/c++config.h>, which defines
+  # std::size_t/std::ptrdiff_t straight from compiler builtins. Belongs in
+  # CXXFLAGS (configure also feeds CPPFLAGS to its C compiler probe).
+  cstdintFlag = "-include cstdint";
+
   # C++ ABI flags for the GCC 9 frontend over the device's libstdc++ 4.8.3.
   # GCC 9 defaults to C++14, which emits calls to the sized operator delete
   # (operator delete(void*, size_t)); 4.8.3 predates it (added in 4.9), so the
