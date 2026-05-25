@@ -53,14 +53,18 @@ Sysroot wiring (see `blackberry-meta#4` for detail):
   sysroot's EOL `.so.2`). Cross needs pre-seeded `ac_cv_*` cache vars, a
   `<syslog.h>` shim (QNX ships slog2), and a handful of QNX knobs — see
   `pkgs/openssh.nix` / `pkgs/openssl.nix` and the **Deploy** section below.
-- `mosh` — **client is the priority** (Blink model: device dials out to a real
-  Linux box running mosh-server). mosh-server on QNX is the genuine experiment
-  (UDP bind / locale / socket options). Pulls in protobuf (needs a matching host
-  `protoc`).
+- `mosh` ✅ *built + device-tested* — **mosh-client** (1.4.0), the Blink model:
+  device dials out to a real Linux box running mosh-server. Rides our
+  from-source OpenSSL 3.x (mosh 1.4 needs a crypto lib's AES) and embeds a
+  static **protobuf 3.6.1** (host `protoc` + cross lib, see `pkgs/protobuf*.nix`).
+  mosh-server on QNX is left as a separate experiment (forkpty / utmp).
 - `tmux` — session persistence + multiplexing. Needs libevent + ncurses.
-- `ncurses` + **terminfo** — hard dependency for mosh / tmux / TUIs. A UTF-8
-  locale and a `*-256color` terminfo entry are the usual "runs but renders
-  garbage" trap.
+- `ncurses` ✅ *built* + **terminfo** — widec (`libncursesw`), hard dependency
+  for mosh / tmux / TUIs. The terminfo DB ships in the deploy bundle; on-device
+  `TERM=xterm-256color` resolves to 256 colors (verified via `mosh-client -c`).
+- `libbbnixcompat` — a small shim lib filling QNX libc gaps that the above hit:
+  the `tsearch(3)` family, `wcwidth`, `nl_langinfo(CODESET)`, and the GCC-4.9-era
+  C++ ABI symbol `__cxa_throw_bad_array_new_length`. See `pkgs/qnx-compat.nix`.
 
 ## Build sequence
 
@@ -69,7 +73,9 @@ Sysroot wiring (see `blackberry-meta#4` for detail):
    unknown: *does from-source GCC 9 link the 2014 sysroot?*
 2. ✅ `zlib` → `openssl` → `openssh` (OpenSSH needs zlib + libcrypto, **not**
    ncurses — that was a planning error; ncurses is for tmux/mosh in step 3).
-3. `ncurses` + `tmux` + `mosh-client`
+3. ✅ `ncurses` + `mosh-client` (chain: `qnx-compat` → `ncurses`, and
+   `protobuf-host`/`protobuf` + `openssl` → `mosh`). `tmux` still to come
+   (libevent + ncurses).
 4. `busybox` subset, then mosh-server / Term49 packaging (the surprises live here).
 
 ## Validation tiers
@@ -82,16 +88,19 @@ Sysroot wiring (see `blackberry-meta#4` for detail):
    **no glibc / no `/nix/store` RUNPATH leak**.
 3. ✅ **Runtime on device:** `bb-scp` the deploy bundle, `bb-ssh` smoke run.
    OpenSSH verified on a Q10 (QNX 8.0.0 armle): `ssh -V`, `ssh -Q cipher`,
-   `ssh-keygen -t ed25519`. See **Deploy**.
+   `ssh-keygen -t ed25519`. mosh-client verified on the same Q10: version
+   banner (all 9 NEEDED libs resolve), and `mosh-client -c` →
+   `256` with `TERM=xterm-256color` (ncursesw + shipped terminfo). See **Deploy**.
 
 ## Layout
 
 ```
 flake.nix          # devShell + package wiring (Model A sysroot by default)
 toolchain/         # binutils, gcc recipes (+ files/, patches/)
-pkgs/              # zlib, openssl, openssh recipes (then ncurses/tmux/mosh/busybox)
-  qnx-common.nix   # shared cross scaffolding (cross-tool env, stddef prologue, drv attrs)
-  files/syslog.h   # <syslog.h> shim (QNX ships slog2, no syslog.h)
+pkgs/              # userland recipes: zlib, openssl, openssh, ncurses, mosh,
+                   #   protobuf (+ protobuf-host), qnx-compat (then tmux/busybox)
+  qnx-common.nix   # shared cross scaffolding (cross-tool env, stddef + C++ ABI flags, drv attrs)
+  files/           # syslog.h / langinfo.h shims, wcwidth_compat.h, qnx-compat.c
 checks/            # validate.sh (toolchain), validate-elf.sh (built libs/binaries)
 ```
 
@@ -129,6 +138,14 @@ LD_LIBRARY_PATH=<dir>/lib  <dir>/bin/ssh ...
 recipes ship **no RPATH** and the launcher sets `LD_LIBRARY_PATH=<dir>/lib`
 instead (which also lets `libssl` find `libcrypto`). An absolute RPATH baked to
 a fixed device path also works if a self-contained binary is ever needed.
+
+**mosh-client** deploys the same way: `mosh-client` beside a `lib/` of
+`libncursesw.so.6` + `libssl.so.3` + `libcrypto.so.3` + `libz.so.1` +
+`libbbnixcompat.so.1` (the rest — `libstdc++.so.6`, `libsocket`, `libm`, `libc`
+— are on the device; protobuf is statically embedded). Ship `share/terminfo`
+too and launch with `LD_LIBRARY_PATH=<dir>/lib TERMINFO=<dir>/terminfo
+TERM=xterm-256color`. The `mosh` perl wrapper isn't used on-device (no perl);
+Term49 invokes `mosh-client` directly.
 
 `sshd` additionally needs, at deploy time: host keys (`ssh-keygen -A`), an `sshd`
 privsep user, and `/var/empty` (mode 700, root-owned) — none are build-time
