@@ -58,7 +58,14 @@ Sysroot wiring (see `blackberry-meta#4` for detail):
   from-source OpenSSL 3.x (mosh 1.4 needs a crypto lib's AES) and embeds a
   static **protobuf 3.6.1** (host `protoc` + cross lib, see `pkgs/protobuf*.nix`).
   mosh-server on QNX is left as a separate experiment (forkpty / utmp).
-- `tmux` — session persistence + multiplexing. Needs libevent + ncurses.
+- `tmux` ✅ *built + device-tested* — session persistence + multiplexing (3.5a).
+  Embeds a static **libevent 2.1.12** and links our `libncursesw`. QNX ships
+  `forkpty(3)` only in the *static* libc (`libcS.a`), so we extract its
+  `pty.o`/`posix_pty.o` PIC objects and link them straight in — verified on the
+  Q10: a detached session forks a real pty and round-trips shell I/O. tmux
+  mandates a UTF-8 `LC_CTYPE`, but QNX's `setlocale` accepts only `C`/`POSIX`, so
+  launch with `LC_ALL=C BBNIX_CODESET=UTF-8` (the latter makes our
+  `nl_langinfo` report UTF-8). See `pkgs/tmux.nix` / `pkgs/libevent.nix`.
 - `ncurses` ✅ *built* + **terminfo** — widec (`libncursesw`), hard dependency
   for mosh / tmux / TUIs. The terminfo DB ships in the deploy bundle; on-device
   `TERM=xterm-256color` resolves to 256 colors (verified via `mosh-client -c`).
@@ -73,9 +80,9 @@ Sysroot wiring (see `blackberry-meta#4` for detail):
    unknown: *does from-source GCC 9 link the 2014 sysroot?*
 2. ✅ `zlib` → `openssl` → `openssh` (OpenSSH needs zlib + libcrypto, **not**
    ncurses — that was a planning error; ncurses is for tmux/mosh in step 3).
-3. ✅ `ncurses` + `mosh-client` (chain: `qnx-compat` → `ncurses`, and
-   `protobuf-host`/`protobuf` + `openssl` → `mosh`). `tmux` still to come
-   (libevent + ncurses).
+3. ✅ `ncurses` + `mosh-client` + `tmux` (chains: `qnx-compat` → `ncurses`;
+   `protobuf-host`/`protobuf` + `openssl` → `mosh`; `libevent` + `ncurses` →
+   `tmux`).
 4. `busybox` subset, then mosh-server / Term49 packaging (the surprises live here).
 
 ## Validation tiers
@@ -90,7 +97,10 @@ Sysroot wiring (see `blackberry-meta#4` for detail):
    OpenSSH verified on a Q10 (QNX 8.0.0 armle): `ssh -V`, `ssh -Q cipher`,
    `ssh-keygen -t ed25519`. mosh-client verified on the same Q10: version
    banner (all 9 NEEDED libs resolve), and `mosh-client -c` →
-   `256` with `TERM=xterm-256color` (ncursesw + shipped terminfo). See **Deploy**.
+   `256` with `TERM=xterm-256color` (ncursesw + shipped terminfo). tmux verified
+   on the same Q10: `tmux -V`, then a detached session forks a real pty and
+   round-trips `echo` through an in-pty `ksh` (`send-keys` + `capture-pane`),
+   proving the static-libc forkpty objects work. See **Deploy**.
 
 ## Layout
 
@@ -98,7 +108,8 @@ Sysroot wiring (see `blackberry-meta#4` for detail):
 flake.nix          # devShell + package wiring (Model A sysroot by default)
 toolchain/         # binutils, gcc recipes (+ files/, patches/)
 pkgs/              # userland recipes: zlib, openssl, openssh, ncurses, mosh,
-                   #   protobuf (+ protobuf-host), qnx-compat (then tmux/busybox)
+                   #   protobuf (+ protobuf-host), libevent, tmux, qnx-compat
+                   #   (then busybox)
   qnx-common.nix   # shared cross scaffolding (cross-tool env, stddef + C++ ABI flags, drv attrs)
   files/           # syslog.h / langinfo.h shims, wcwidth_compat.h, qnx-compat.c
 checks/            # validate.sh (toolchain), validate-elf.sh (built libs/binaries)
@@ -146,6 +157,16 @@ a fixed device path also works if a self-contained binary is ever needed.
 too and launch with `LD_LIBRARY_PATH=<dir>/lib TERMINFO=<dir>/terminfo
 TERM=xterm-256color`. The `mosh` perl wrapper isn't used on-device (no perl);
 Term49 invokes `mosh-client` directly.
+
+**tmux** deploys with only `libncursesw.so.6` + `libbbnixcompat.so.1` in `lib/`
+(libevent and the pty objects are statically embedded; `libsocket`/`libm`/`libc`
+are on the device). Launch with `LD_LIBRARY_PATH=<dir>/lib
+TERMINFO=<dir>/terminfo TERM=xterm-256color LC_ALL=C BBNIX_CODESET=UTF-8`, then
+`tmux new`. The `LC_ALL=C BBNIX_CODESET=UTF-8` pair is required: tmux gates on a
+UTF-8 `LC_CTYPE`, but QNX's `setlocale` rejects every `.UTF-8` locale name, so
+`LC_ALL=C` keeps `setlocale` happy while `BBNIX_CODESET` makes `libbbnixcompat`'s
+`nl_langinfo(CODESET)` report UTF-8. Verified on the Q10 (forkpty round-trips a
+real `ksh` pty).
 
 `sshd` additionally needs, at deploy time: host keys (`ssh-keygen -A`), an `sshd`
 privsep user, and `/var/empty` (mode 700, root-owned) — none are build-time

@@ -289,8 +289,16 @@ void __cxa_throw_bad_array_new_length(void)
  * LC_CTYPE, then LANG -- the POSIX precedence), falling back to setlocale's
  * view. A locale name containing "utf-8"/"utf8" (any case) is UTF-8; anything
  * else is treated as plain ASCII (the "ANSI_X3.4-1968" mosh maps to US-ASCII).
- * Driving it from the environment lets the on-device launcher force UTF-8 even
- * though QNX's own locale machinery is threadbare. See files/langinfo.h.
+ *
+ * BBNIX_CODESET override (checked first): QNX's setlocale accepts only "C" and
+ * "POSIX" -- it rejects every ".UTF-8" locale name with NULL. tmux gates on
+ * BOTH setlocale(LC_CTYPE,"") != NULL *and* nl_langinfo(CODESET)==UTF-8, and
+ * both read the same highest-precedence LC_* var, so no POSIX-locale value can
+ * satisfy both at once (UTF-8 name -> setlocale fails; "C" -> codeset ANSI).
+ * BBNIX_CODESET breaks the tie: the launcher sets LC_ALL=C (setlocale happy)
+ * and BBNIX_CODESET=UTF-8 (we report UTF-8) to assert the terminal's real
+ * codeset independently of QNX's threadbare locale machinery. See
+ * files/langinfo.h and [[bbnix-tmux-userland]].
  * ------------------------------------------------------------------ */
 static int bb_has_utf8(const char *s)
 {
@@ -312,7 +320,8 @@ char *nl_langinfo(nl_item item)
     if (item != CODESET)
         return (char *) "";
 
-    const char *loc = getenv("LC_ALL");
+    const char *loc = getenv("BBNIX_CODESET");
+    if (loc == NULL || *loc == '\0') loc = getenv("LC_ALL");
     if (loc == NULL || *loc == '\0') loc = getenv("LC_CTYPE");
     if (loc == NULL || *loc == '\0') loc = getenv("LANG");
     if (loc == NULL || *loc == '\0') loc = setlocale(LC_CTYPE, NULL);

@@ -91,9 +91,26 @@
           sysroot = sysrootRoot;
         };
 
+        # tmux's event loop; static .a embedded into tmux (sole consumer).
+        libevent-qnx = pkgs.callPackage ./pkgs/libevent.nix {
+          inherit binutils gcc;
+          target = qnxTarget;
+          sysroot = sysrootRoot;
+        };
+
         # Step 3 (tmux + mosh-client): ncurses is the shared TUI dependency.
         ncurses-qnx = pkgs.callPackage ./pkgs/ncurses.nix {
           inherit binutils gcc;
+          compat = qnx-compat;
+          target = qnxTarget;
+          sysroot = sysrootRoot;
+        };
+
+        # tmux: terminal multiplexer (libevent + ncursesw).
+        tmux = pkgs.callPackage ./pkgs/tmux.nix {
+          inherit binutils gcc;
+          libevent = libevent-qnx;
+          ncurses = ncurses-qnx;
           compat = qnx-compat;
           target = qnxTarget;
           sysroot = sysrootRoot;
@@ -115,11 +132,12 @@
         # land. Sequence (see README): toolchain PoC -> ncurses -> openssh ->
         # tmux + mosh-client -> busybox subset.
         packages = {
-          inherit binutils gcc-stage1 gcc openssh mosh;
+          inherit binutils gcc-stage1 gcc openssh mosh tmux;
           zlib = zlib-qnx;
           openssl = openssl-qnx;
           ncurses = ncurses-qnx;
           protobuf = protobuf-qnx;
+          libevent = libevent-qnx;
           inherit qnx-compat protobuf-host;
         };
 

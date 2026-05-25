@@ -51,4 +51,11 @@
   # operator delete the old runtime provides. (The other 4.9-era ABI gap,
   # __cxa_throw_bad_array_new_length, is supplied by libbbnixcompat instead.)
   cxxAbiFlags = "-fno-sized-deallocation";
+
+  # QNX deliberately omits SA_RESTART: <signal.h> reserves 0x0040 as "not
+  # supported yet" -- the kernel doesn't auto-restart syscalls. Code that does
+  # `sa_flags |= SA_RESTART` (libevent, tmux) won't compile. Define it to 0 so
+  # the OR is a harmless no-op; the affected event loops already retry on EINTR.
+  # Belongs in CFLAGS/CPPFLAGS.
+  saRestartFlag = "-DSA_RESTART=0";
 }
