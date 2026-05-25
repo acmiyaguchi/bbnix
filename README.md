@@ -35,7 +35,7 @@ via `requireFile` for a pure build (Model B). See [`AGENTS.md`](AGENTS.md) and
 | `mosh` | 1.4.0 | device-tested | mosh-client (dial-out to a Linux mosh-server); static protobuf |
 | `tmux` | 3.5a | device-tested | static libevent; forkpty via the static-libc pty objects |
 | `zsh` | 5.9 | device-tested | one static binary; GNU libiconv multibyte (no locale gate) |
-| `ncurses` | widec | built | `libncursesw` + terminfo; hard dep for mosh / tmux / TUIs |
+| `ncurses` | 6.4 | built | widec `libncursesw` + terminfo; hard dep for mosh / tmux / TUIs |
 | `libbbnixcompat` | — | built | shim for QNX libc gaps (tsearch, wcwidth, nl_langinfo, C++ ABI) |
 | `busybox` | subset | planned | fills minimal-userland gaps; Linux-isms make it the soft spot |
 

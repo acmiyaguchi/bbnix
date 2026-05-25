@@ -25,10 +25,9 @@ checks/            # validate.sh (toolchain), validate-elf.sh (built libs/binari
 - **Model B — `requireFile` store input.** Bring the sysroot into the store once,
   content-addressed; pure and cacheable. Marked `meta.license = unfree`.
 
-The SDK's `qcc` already selects between GCC 4.6.3 / 4.8.3 purely via
-`etc/qcc/gcc/<ver>/*.conf` — it's a spec-file driver, not a compiler. bbnix builds
-a modern GCC from source and links it against the user's sysroot instead, to build
-current C++ (mosh) and harden the network daemons without the 2014 GCC.
+The `qcc` spec-file driver (see README) already switches between the SDK's GCC
+4.6.3 / 4.8.3 purely via `etc/qcc/gcc/<ver>/*.conf` — which is the seam bbnix's
+own modern GCC slots into.
 
 ### Why not nixpkgs cross / BerryCore
 
