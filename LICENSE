@@ -24,6 +24,7 @@ SOFTWARE.
 
 NOTE: The MIT license above applies to the bbnix-original code only. This
 repository also contains GPL-3.0-or-later material derived from GCC (full text
-in COPYING3, plus the GCC Runtime Library Exception in COPYING.RUNTIME); see
+in toolchain/files/gcc9/COPYING3, plus the GCC Runtime Library Exception in
+toolchain/files/gcc9/COPYING.RUNTIME); see
 NOTICE for the exact files and their terms. Where licenses differ, the per-file
 license headers and NOTICE govern.
