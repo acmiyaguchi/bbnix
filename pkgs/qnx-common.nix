@@ -33,4 +33,12 @@
   # a plain `#include <unistd.h>` fails with "unknown type name 'size_t'". Force
   # <stddef.h> first. See [[qnx-unistd-size-t-stddef-gap]].
   stddefFlag = "-include stddef.h";
+
+  # C++ ABI flags for the GCC 9 frontend over the device's libstdc++ 4.8.3.
+  # GCC 9 defaults to C++14, which emits calls to the sized operator delete
+  # (operator delete(void*, size_t)); 4.8.3 predates it (added in 4.9), so the
+  # symbol is undefined at link. -fno-sized-deallocation reverts to the plain
+  # operator delete the old runtime provides. (The other 4.9-era ABI gap,
+  # __cxa_throw_bad_array_new_length, is supplied by libbbnixcompat instead.)
+  cxxAbiFlags = "-fno-sized-deallocation";
 }

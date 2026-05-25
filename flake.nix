@@ -73,6 +73,17 @@
           sysroot = sysrootRoot;
         };
 
+        # Native protoc 3.6.1 (build host) that drives the cross libprotobuf.
+        protobuf-host = pkgs.callPackage ./pkgs/protobuf-host.nix { };
+
+        # Cross-built static libprotobuf 3.6.1 (mosh's state-sync protocol).
+        protobuf-qnx = pkgs.callPackage ./pkgs/protobuf.nix {
+          inherit binutils gcc protobuf-host;
+          compat = qnx-compat;
+          target = qnxTarget;
+          sysroot = sysrootRoot;
+        };
+
         # Fills QNX libc gaps (tsearch family, wcwidth) that ncurses/mosh hit.
         qnx-compat = pkgs.callPackage ./pkgs/qnx-compat.nix {
           inherit binutils gcc;
@@ -96,7 +107,8 @@
           zlib = zlib-qnx;
           openssl = openssl-qnx;
           ncurses = ncurses-qnx;
-          inherit qnx-compat;
+          protobuf = protobuf-qnx;
+          inherit qnx-compat protobuf-host;
         };
 
         devShells.default = pkgs.mkShell {

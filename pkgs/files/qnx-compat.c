@@ -10,6 +10,11 @@
  *   - wcwidth/wcswidth (<wchar.h>): not provided or even declared. On stock
  *     QNX these live in QNX's *own* ncurses, which is circular when we are the
  *     ones building ncurses. Needed by any UTF-8 TUI (ncurses widec, mosh).
+ *   - __cxa_throw_bad_array_new_length: a C++ ABI runtime symbol GCC 9 emits
+ *     for `new T[n]` overflow checks, added to libsupc++ in GCC 4.9 -- absent
+ *     in the device's libstdc++ 4.8.3. Any C++ built with the GCC 9 frontend
+ *     (protobuf, mosh) references it. (The companion sized-operator-delete gap
+ *     is handled at compile time by -fno-sized-deallocation, see qnx-common.)
  *
  * Built as libbbnixcompat.so and linked ahead of libc; the symbols are plain
  * libc names so they satisfy the undefined references directly.
@@ -257,4 +262,18 @@ int wcswidth(const wchar_t *pwcs, size_t n)
         width += w;
     }
     return width;
+}
+
+/* ------------------------------------------------------------------ *
+ * C++ ABI: __cxa_throw_bad_array_new_length (libsupc++, GCC >= 4.9).
+ *
+ * Called when `new T[n]` would overflow. The standard behaviour is to throw
+ * std::bad_array_new_length, but that type is itself absent from the 4.8.3
+ * libstdc++ headers, so we cannot construct it here. Aborting is an acceptable
+ * terminal action for this dev-tool userland: it only fires on an impossible
+ * allocation size, never in normal operation. The symbol has C linkage.
+ * ------------------------------------------------------------------ */
+void __cxa_throw_bad_array_new_length(void)
+{
+    abort();
 }
