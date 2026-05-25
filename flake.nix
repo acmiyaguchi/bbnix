@@ -72,6 +72,21 @@
           target = qnxTarget;
           sysroot = sysrootRoot;
         };
+
+        # Fills QNX libc gaps (tsearch family, wcwidth) that ncurses/mosh hit.
+        qnx-compat = pkgs.callPackage ./pkgs/qnx-compat.nix {
+          inherit binutils gcc;
+          target = qnxTarget;
+          sysroot = sysrootRoot;
+        };
+
+        # Step 3 (tmux + mosh-client): ncurses is the shared TUI dependency.
+        ncurses-qnx = pkgs.callPackage ./pkgs/ncurses.nix {
+          inherit binutils gcc;
+          compat = qnx-compat;
+          target = qnxTarget;
+          sysroot = sysrootRoot;
+        };
       in {
         # Recipes live under toolchain/ and pkgs/ and are wired in here as they
         # land. Sequence (see README): toolchain PoC -> ncurses -> openssh ->
@@ -80,6 +95,8 @@
           inherit binutils gcc-stage1 gcc openssh;
           zlib = zlib-qnx;
           openssl = openssl-qnx;
+          ncurses = ncurses-qnx;
+          inherit qnx-compat;
         };
 
         devShells.default = pkgs.mkShell {
