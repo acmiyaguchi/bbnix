@@ -4,10 +4,8 @@ A minimal, from-source cross-build userland for **BlackBerry 10 / QNX 8**
 (`armle-v7`), expressed as Nix derivations — a small remote-dev toolkit in the
 spirit of [Blink](https://blink.sh), not a package distribution.
 
-This is the **implementation** repo. Design discussion lives in `blackberry-meta`
-(issue #4, the modern GCC cross-toolchain); the on-device terminal app (`Term49`)
-is a separate checkout. Engineering detail — per-package build notes, deploy
-recipes, validation — lives in [`AGENTS.md`](AGENTS.md).
+This is the **implementation** repo. Engineering detail — per-package build
+notes, deploy recipes, validation — lives in [`AGENTS.md`](AGENTS.md).
 
 > This repo is developed and maintained largely by LLM agents (hence `AGENTS.md`),
 > under human review. Expect commits and docs to reflect that.
@@ -17,7 +15,7 @@ recipes, validation — lives in [`AGENTS.md`](AGENTS.md).
 | | |
 |---|---|
 | **In** | The cross-toolchain + recipes for ncurses, OpenSSH, mosh, tmux, zsh, and a busybox subset. All open source, built from public source + hashes. |
-| **Out** | The QNX 8 / BB10 sysroot (`target_10_3_1_995`) — proprietary, **never committed**, supplied at build time. The terminal app (Term49). |
+| **Out** | The QNX 8 / BB10 sysroot (`target_10_3_1_995`) — proprietary, **never committed**, supplied at build time. |
 
 ## Open / proprietary split
 
@@ -26,8 +24,8 @@ The SDK's `qcc` is a spec-file driver, not a compiler. bbnix instead builds a
 build current C++ and harden the daemons without being pinned to the 2014 GCC.
 The proprietary sysroot is never committed: by default it's referenced in place
 (Model A, impure; `BBNIX_SYSROOT` overrides the path), or brought into the store
-via `requireFile` for a pure build (Model B). See [`AGENTS.md`](AGENTS.md) and
-`blackberry-meta#4` for the wiring.
+via `requireFile` for a pure build (Model B). See [`AGENTS.md`](AGENTS.md) for
+the wiring.
 
 ## Targets
 
