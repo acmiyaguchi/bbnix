@@ -14,7 +14,7 @@ bbnix only builds the userland it executes.
 
 | | |
 |---|---|
-| **In** | The cross-toolchain + recipes for ncurses, OpenSSH, mosh, tmux, and a busybox subset. All open source (GPL/BSD/Apache), public source + hashes. |
+| **In** | The cross-toolchain + recipes for ncurses, OpenSSH, mosh, tmux, zsh, and a busybox subset. All open source (GPL/BSD/Apache), public source + hashes. |
 | **Out** | The QNX 8 / BB10 sysroot (`target_10_3_1_995`) — proprietary, **never committed**, supplied at build time. The terminal app (Term49). |
 
 ## The open / proprietary split
@@ -66,6 +66,15 @@ Sysroot wiring (see `blackberry-meta#4` for detail):
   mandates a UTF-8 `LC_CTYPE`, but QNX's `setlocale` accepts only `C`/`POSIX`, so
   launch with `LC_ALL=C BBNIX_CODESET=UTF-8` (the latter makes our
   `nl_langinfo` report UTF-8). See `pkgs/tmux.nix` / `pkgs/libevent.nix`.
+- `zsh` ✅ *built + device-tested* — a richer interactive shell (5.9) than the
+  device's minimal ksh / Term49's bundled mksh: completion, history, zle. Built
+  as **one static binary** (`--disable-dynamic` links all modules in — no
+  loadable `.so` tree, no `dlopen` Linux-isms). Links our `libncursesw` and rides
+  QNX's own GNU **libiconv** (`libiconv.so.1`, already on-device) for UTF-8, so
+  multibyte needs no extra deploy dep — and, unlike tmux, no `BBNIX_CODESET`
+  trick (zsh's `--enable-multibyte` is compile-time, not locale-gated). Verified
+  on the Q10: scripting, assoc arrays, and UTF-8 string ops (`${#"héllo"}` → 5,
+  case-mapping preserves `é`). See `pkgs/zsh.nix`.
 - `ncurses` ✅ *built* + **terminfo** — widec (`libncursesw`), hard dependency
   for mosh / tmux / TUIs. The terminfo DB ships in the deploy bundle; on-device
   `TERM=xterm-256color` resolves to 256 colors (verified via `mosh-client -c`).
@@ -100,7 +109,10 @@ Sysroot wiring (see `blackberry-meta#4` for detail):
    `256` with `TERM=xterm-256color` (ncursesw + shipped terminfo). tmux verified
    on the same Q10: `tmux -V`, then a detached session forks a real pty and
    round-trips `echo` through an in-pty `ksh` (`send-keys` + `capture-pane`),
-   proving the static-libc forkpty objects work. See **Deploy**.
+   proving the static-libc forkpty objects work. zsh verified on the same Q10:
+   `zsh --version` → 5.9, scripting/builtins, and UTF-8 string ops (multibyte
+   length + case-mapping) — multibyte works with no `BBNIX_CODESET` override.
+   See **Deploy**.
 
 ## Layout
 
@@ -108,7 +120,7 @@ Sysroot wiring (see `blackberry-meta#4` for detail):
 flake.nix          # devShell + package wiring (Model A sysroot by default)
 toolchain/         # binutils, gcc recipes (+ files/, patches/)
 pkgs/              # userland recipes: zlib, openssl, openssh, ncurses, mosh,
-                   #   protobuf (+ protobuf-host), libevent, tmux, qnx-compat
+                   #   protobuf (+ protobuf-host), libevent, tmux, zsh, qnx-compat
                    #   (then busybox)
   qnx-common.nix   # shared cross scaffolding (cross-tool env, stddef + C++ ABI flags, drv attrs)
   files/           # syslog.h / langinfo.h shims, wcwidth_compat.h, qnx-compat.c
@@ -167,6 +179,14 @@ UTF-8 `LC_CTYPE`, but QNX's `setlocale` rejects every `.UTF-8` locale name, so
 `LC_ALL=C` keeps `setlocale` happy while `BBNIX_CODESET` makes `libbbnixcompat`'s
 `nl_langinfo(CODESET)` report UTF-8. Verified on the Q10 (forkpty round-trips a
 real `ksh` pty).
+
+**zsh** deploys into the *same* bundle as tmux — it reuses `libncursesw.so.6` +
+`libbbnixcompat.so.1` in `lib/` and the terminfo DB (`libiconv.so.1`/`libsocket`/
+`libm`/`libc` are on-device; all modules are statically linked in). Launch with
+`LD_LIBRARY_PATH=<dir>/lib TERMINFO=<dir>/terminfo TERM=xterm-256color`, then
+`zsh`. No `LC_ALL`/`BBNIX_CODESET` is required (zsh's multibyte is compile-time,
+not locale-gated). Switching Term49's default shell from mksh to zsh is a
+separate, optional follow-up.
 
 `sshd` additionally needs, at deploy time: host keys (`ssh-keygen -A`), an `sshd`
 privsep user, and `/var/empty` (mode 700, root-owned) — none are build-time

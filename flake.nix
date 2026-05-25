@@ -116,6 +116,15 @@
           sysroot = sysrootRoot;
         };
 
+        # zsh: richer interactive shell (static single binary; ncursesw + iconv).
+        zsh = pkgs.callPackage ./pkgs/zsh.nix {
+          inherit binutils gcc;
+          ncurses = ncurses-qnx;
+          compat = qnx-compat;
+          target = qnxTarget;
+          sysroot = sysrootRoot;
+        };
+
         # mosh-client: the Blink-style remote-dev endgame.
         mosh = pkgs.callPackage ./pkgs/mosh.nix {
           inherit binutils gcc protobuf-host;
@@ -132,7 +141,7 @@
         # land. Sequence (see README): toolchain PoC -> ncurses -> openssh ->
         # tmux + mosh-client -> busybox subset.
         packages = {
-          inherit binutils gcc-stage1 gcc openssh mosh tmux;
+          inherit binutils gcc-stage1 gcc openssh mosh tmux zsh;
           zlib = zlib-qnx;
           openssl = openssl-qnx;
           ncurses = ncurses-qnx;
