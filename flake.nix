@@ -48,12 +48,38 @@
           langCxx = true;
           gxxIncludeDir = "${sysrootRoot}/usr/include/c++/4.8.3";
         };
+
+        # Userland recipes (pkgs/), cross-built with the toolchain above against
+        # the BYO sysroot. Suffixed -qnx where the bare name would collide with a
+        # host nixpkgs attr (pkgs.zlib is consumed by gcc.nix). Dependency chain:
+        # zlib + openssl -> openssh.
+        zlib-qnx = pkgs.callPackage ./pkgs/zlib.nix {
+          inherit binutils gcc;
+          target = qnxTarget;
+          sysroot = sysrootRoot;
+        };
+
+        openssl-qnx = pkgs.callPackage ./pkgs/openssl.nix {
+          inherit binutils gcc;
+          target = qnxTarget;
+          sysroot = sysrootRoot;
+        };
+
+        openssh = pkgs.callPackage ./pkgs/openssh.nix {
+          inherit binutils gcc;
+          openssl = openssl-qnx;
+          zlib = zlib-qnx;
+          target = qnxTarget;
+          sysroot = sysrootRoot;
+        };
       in {
         # Recipes live under toolchain/ and pkgs/ and are wired in here as they
         # land. Sequence (see README): toolchain PoC -> ncurses -> openssh ->
         # tmux + mosh-client -> busybox subset.
         packages = {
-          inherit binutils gcc-stage1 gcc;
+          inherit binutils gcc-stage1 gcc openssh;
+          zlib = zlib-qnx;
+          openssl = openssl-qnx;
         };
 
         devShells.default = pkgs.mkShell {
