@@ -27,8 +27,8 @@ stdenv.mkDerivation (qnx.drvAttrs // {
   buildPhase = ''
     runHook preBuild
     ${qnx.crossEnv}
-    $CC -shared -fPIC ${qnx.stddefFlag} -Wl,-soname,libbbnixcompat.so.1 \
-      -o libbbnixcompat.so.1 ${./files/qnx-compat.c}
+    $CC -shared -fPIC ${qnx.stddefFlag} -I${./files} -Wl,-soname,libbbnixcompat.so.1 \
+      -o libbbnixcompat.so.1 ${./files}/qnx-compat.c
     runHook postBuild
   '';
 

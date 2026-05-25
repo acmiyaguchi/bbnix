@@ -98,12 +98,24 @@
           target = qnxTarget;
           sysroot = sysrootRoot;
         };
+
+        # mosh-client: the Blink-style remote-dev endgame.
+        mosh = pkgs.callPackage ./pkgs/mosh.nix {
+          inherit binutils gcc protobuf-host;
+          ncurses = ncurses-qnx;
+          zlib = zlib-qnx;
+          protobuf = protobuf-qnx;
+          openssl = openssl-qnx;
+          compat = qnx-compat;
+          target = qnxTarget;
+          sysroot = sysrootRoot;
+        };
       in {
         # Recipes live under toolchain/ and pkgs/ and are wired in here as they
         # land. Sequence (see README): toolchain PoC -> ncurses -> openssh ->
         # tmux + mosh-client -> busybox subset.
         packages = {
-          inherit binutils gcc-stage1 gcc openssh;
+          inherit binutils gcc-stage1 gcc openssh mosh;
           zlib = zlib-qnx;
           openssl = openssl-qnx;
           ncurses = ncurses-qnx;

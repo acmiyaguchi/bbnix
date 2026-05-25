@@ -15,6 +15,9 @@
  *     in the device's libstdc++ 4.8.3. Any C++ built with the GCC 9 frontend
  *     (protobuf, mosh) references it. (The companion sized-operator-delete gap
  *     is handled at compile time by -fno-sized-deallocation, see qnx-common.)
+ *   - nl_langinfo (<langinfo.h>): QNX has setlocale but not the langinfo query
+ *     API. mosh needs only nl_langinfo(CODESET) to test for a UTF-8 locale.
+ *     We derive the codeset from the locale environment. See files/langinfo.h.
  *
  * Built as libbbnixcompat.so and linked ahead of libc; the symbols are plain
  * libc names so they satisfy the undefined references directly.
@@ -22,6 +25,8 @@
 
 #include <stdlib.h>
 #include <wchar.h>
+#include <locale.h>
+#include "langinfo.h"
 
 /* ------------------------------------------------------------------ *
  * tsearch(3) family -- unbalanced binary search tree.
@@ -276,4 +281,41 @@ int wcswidth(const wchar_t *pwcs, size_t n)
 void __cxa_throw_bad_array_new_length(void)
 {
     abort();
+}
+
+/* ------------------------------------------------------------------ *
+ * nl_langinfo(CODESET) -- QNX has no langinfo API. We report the codeset of
+ * the effective LC_CTYPE locale, taken from the environment (LC_ALL, then
+ * LC_CTYPE, then LANG -- the POSIX precedence), falling back to setlocale's
+ * view. A locale name containing "utf-8"/"utf8" (any case) is UTF-8; anything
+ * else is treated as plain ASCII (the "ANSI_X3.4-1968" mosh maps to US-ASCII).
+ * Driving it from the environment lets the on-device launcher force UTF-8 even
+ * though QNX's own locale machinery is threadbare. See files/langinfo.h.
+ * ------------------------------------------------------------------ */
+static int bb_has_utf8(const char *s)
+{
+    for (; s && *s; s++) {
+        /* match "utf" then optional '-' then '8', case-insensitively */
+        const char *p = s;
+        if ((p[0] | 0x20) != 'u') continue;
+        if ((p[1] | 0x20) != 't') continue;
+        if ((p[2] | 0x20) != 'f') continue;
+        p += 3;
+        if (*p == '-') p++;
+        if (*p == '8') return 1;
+    }
+    return 0;
+}
+
+char *nl_langinfo(nl_item item)
+{
+    if (item != CODESET)
+        return (char *) "";
+
+    const char *loc = getenv("LC_ALL");
+    if (loc == NULL || *loc == '\0') loc = getenv("LC_CTYPE");
+    if (loc == NULL || *loc == '\0') loc = getenv("LANG");
+    if (loc == NULL || *loc == '\0') loc = setlocale(LC_CTYPE, NULL);
+
+    return bb_has_utf8(loc) ? (char *) "UTF-8" : (char *) "ANSI_X3.4-1968";
 }
