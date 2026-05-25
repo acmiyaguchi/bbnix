@@ -105,13 +105,14 @@ stdenv.mkDerivation (qnx.drvAttrs // rec {
     runHook postInstall
   '';
 
-  # Relocatable RUNPATH so the deploy bundle (bin/ + lib/ with libssl/libcrypto/
-  # libz) resolves on device without leaking /nix/store. $out/sbin is a stdenv
-  # symlink to bin, so we iterate bin + libexec only (every file there is an ELF
-  # binary).
+  # Ship NO RPATH: the device's QNX loader does not expand $ORIGIN, so deploy
+  # sets LD_LIBRARY_PATH=<libdir>. Strip any rpath the build baked in (notably
+  # --with-ssl-dir can add a /nix/store path) so nothing leaks. $out/sbin is a
+  # stdenv symlink to bin, so we iterate bin + libexec only (all ELF binaries).
+  # See [[bbnix-openssh-userland]].
   postFixup = ''
     for f in $out/bin/* $out/libexec/*; do
-      patchelf --set-rpath '$ORIGIN/../lib' "$f"
+      patchelf --remove-rpath "$f"
     done
   '';
 

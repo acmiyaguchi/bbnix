@@ -49,14 +49,12 @@ stdenv.mkDerivation (qnx.drvAttrs // rec {
   # zlib's configure does not apply -Wl,-soname for our unknown CHOST, so the
   # .so ships without DT_SONAME and anything linking -lz records the bare link
   # name (libz.so) as NEEDED instead of the versioned soname. Set the soname
-  # explicitly. Also set a relocatable RUNPATH ($ORIGIN/../lib) so a co-located
-  # deploy bundle resolves on device without leaking /nix/store -- via patchelf
-  # because a literal $ORIGIN in -Wl,-rpath gets eaten by Make's own variable
-  # expansion ($O -> empty).
+  # explicitly. We ship NO RPATH: the device's QNX loader does not expand
+  # $ORIGIN, so deploy sets LD_LIBRARY_PATH=<libdir>. See [[bbnix-openssh-userland]].
   postFixup = ''
     lib=$out/lib/libz.so.${version}
     patchelf --set-soname libz.so.1 "$lib"
-    patchelf --set-rpath '$ORIGIN/../lib' "$lib"
+    patchelf --remove-rpath "$lib"
   '';
 
   meta = {

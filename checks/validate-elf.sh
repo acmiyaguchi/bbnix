@@ -54,11 +54,13 @@ fi
 # No glibc / no Linux loader leak.
 echo "$dyn" | grep -Eq "NEEDED.*libc.so.6|NEEDED.*ld-linux" && { echo "FAIL: glibc leak"; exit 1; } || true
 
-# RUNPATH must be the relocatable $ORIGIN form (or empty), never a store path.
+# We ship no RPATH (the device QNX loader does not expand $ORIGIN; libs are
+# found via LD_LIBRARY_PATH at launch). Any RPATH/RUNPATH at all is unexpected,
+# and a /nix/store one is a hard leak.
 rp="$(echo "$dyn" | grep -E "RPATH|RUNPATH" || true)"
 if [ -n "$rp" ]; then
   echo "$rp" | grep -q "/nix/store" && { echo "FAIL: /nix/store RUNPATH leak"; exit 1; } || true
-  echo "$rp" | grep -q '\$ORIGIN' || echo "WARN: RUNPATH set but not \$ORIGIN-relative"
+  echo "WARN: unexpected RPATH/RUNPATH (should be none; libs come via LD_LIBRARY_PATH)"
 fi
 echo "  NEEDED OK ($(echo "$dyn" | grep -c NEEDED) libs); no .so.2 / glibc / store leak"
 

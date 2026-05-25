@@ -92,11 +92,12 @@ stdenv.mkDerivation (qnx.drvAttrs // rec {
     runHook postInstall
   '';
 
-  # Relocatable RUNPATH for the deploy bundle (bin/ + lib/) -- patchelf rather
-  # than -Wl,-rpath because Make/Configure mangle a literal $ORIGIN. libssl
-  # NEEDs libcrypto, so $ORIGIN lets co-located libs find each other on device.
+  # Ship NO RPATH: the device's QNX loader does not expand $ORIGIN, so deploy
+  # sets LD_LIBRARY_PATH=<libdir> (which also lets libssl find libcrypto).
+  # Strip any rpath the build baked in so no /nix/store path leaks.
+  # See [[bbnix-openssh-userland]].
   postFixup = ''
-    patchelf --set-rpath '$ORIGIN/../lib' $out/lib/libcrypto.so.3 $out/lib/libssl.so.3
+    patchelf --remove-rpath $out/lib/libcrypto.so.3 $out/lib/libssl.so.3
   '';
 
   meta = {
