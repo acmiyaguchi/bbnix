@@ -33,6 +33,11 @@
   zlib,
   target ? "arm-unknown-nto-qnx8.0.0eabi",
   sysroot,
+  # Compile-time default CA bundle path, baked via --with-ca-bundle. Matches
+  # openssl.nix's --openssldir; the deploy step ships nixpkgs.cacert's
+  # cacert.pem here. Only a default -- callers can override at runtime
+  # (--cacert, CURLOPT_CAINFO, CURL_CA_BUNDLE).
+  caBundle ? "/accounts/1000/shared/misc/ssl/cacert.pem",
 }:
 
 let
@@ -43,7 +48,7 @@ stdenv.mkDerivation (qnx.drvAttrs // rec {
   version = "8.20.0";
 
   src = fetchurl {
-    url = "https://github.com/curl/curl/releases/download/curl-${builtins.replaceStrings [ "." ] [ "_" ] version}/curl-${version}.tar.gz";
+    url = "https://curl.se/download/curl-${version}.tar.gz";
     sha256 = "1h1d7mcp74bdn2av658759nz659cg2dc9kddd4k4ixgrsg51jn7w";
   };
 
@@ -67,7 +72,7 @@ stdenv.mkDerivation (qnx.drvAttrs // rec {
       --prefix=$out \
       --with-openssl=${openssl} \
       --with-zlib=${zlib} \
-      --with-ca-bundle=/accounts/1000/shared/misc/ssl/cacert.pem \
+      --with-ca-bundle=${caBundle} \
       --without-gssapi \
       --disable-ldap --disable-ldaps \
       --without-nghttp2 --without-libpsl --without-brotli --without-zstd \
