@@ -13,16 +13,23 @@
         pkgs = import nixpkgs { inherit system; };
 
         # BYO sysroot (Model A — impure path). The proprietary QNX 8 / BB10
-        # target tree is never committed; it is referenced in place from the
-        # bbdev workspace, mirroring how the workspace flake references sdkDir.
-        # Override with: nix develop --override-input ... or BBNIX_SYSROOT.
-        defaultSysroot = "/mnt/data/fun/bbdev/sdk/bbndk-linux";
+        # target tree is never committed and has NO default: it must be supplied
+        # via the BBNIX_SYSROOT env var, which means package builds run impure,
+        # e.g. `BBNIX_SYSROOT=/path/to/bbndk-linux nix build --impure .#gcc`.
+        # An unset value throws at eval time rather than silently using a local
+        # path. (Build-time reads of the sysroot are allowed via __noChroot;
+        # --impure is needed only because getEnv is impure at eval time.)
+        sysrootBase =
+          let s = builtins.getEnv "BBNIX_SYSROOT"; in
+          if s == "" then
+            throw "bbnix: BBNIX_SYSROOT is not set. Point it at your bbndk-linux tree and build impurely, e.g.: BBNIX_SYSROOT=/path/to/bbndk-linux nix build --impure .#gcc"
+          else s;
 
         qnxTarget = "arm-unknown-nto-qnx8.0.0eabi";
 
         # The QNX target tree passed as --with-sysroot. Headers live under
         # <sysrootRoot>/usr/include; ARM libs/CRT under <sysrootRoot>/armle-v7/lib.
-        sysrootRoot = "${defaultSysroot}/target_10_3_1_995/qnx6";
+        sysrootRoot = "${sysrootBase}/target_10_3_1_995/qnx6";
 
         binutils = pkgs.callPackage ./toolchain/binutils.nix {
           target = qnxTarget;
@@ -154,11 +161,12 @@
           name = "bbnix";
           packages = with pkgs; [ gnumake file ];
           shellHook = ''
-            export BBNIX_SYSROOT="''${BBNIX_SYSROOT:-${defaultSysroot}}"
             export BBNIX_TARGET="${qnxTarget}"
-            echo "bbnix: target=$BBNIX_TARGET sysroot=$BBNIX_SYSROOT"
-            if [ ! -d "$BBNIX_SYSROOT" ]; then
-              echo "bbnix: warning: sysroot not found at $BBNIX_SYSROOT" >&2
+            if [ -z "''${BBNIX_SYSROOT:-}" ]; then
+              echo "bbnix: BBNIX_SYSROOT is unset — set it to your bbndk-linux tree before building (builds run with --impure)." >&2
+            else
+              echo "bbnix: target=$BBNIX_TARGET sysroot=$BBNIX_SYSROOT"
+              [ -d "$BBNIX_SYSROOT" ] || echo "bbnix: warning: sysroot not found at $BBNIX_SYSROOT" >&2
             fi
           '';
         };

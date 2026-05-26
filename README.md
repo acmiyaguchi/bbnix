@@ -22,10 +22,10 @@ notes, deploy recipes, validation — lives in [`AGENTS.md`](AGENTS.md).
 The SDK's `qcc` is a spec-file driver, not a compiler. bbnix instead builds a
 **modern GCC** from source and links it against the user's sysroot, so it can
 build current C++ and harden the daemons without being pinned to the 2014 GCC.
-The proprietary sysroot is never committed: by default it's referenced in place
-(Model A, impure; `BBNIX_SYSROOT` overrides the path), or brought into the store
-via `requireFile` for a pure build (Model B). See [`AGENTS.md`](AGENTS.md) for
-the wiring.
+The proprietary sysroot is never committed and has no default: it's referenced
+in place from the path in `BBNIX_SYSROOT` (Model A, impure — unset means the
+build throws), or brought into the store via `requireFile` for a pure build
+(Model B). See [`AGENTS.md`](AGENTS.md) for the wiring.
 
 ## Targets
 
@@ -43,11 +43,15 @@ the wiring.
 ## Usage
 
 ```sh
-nix develop                          # enters the bbnix shell; reports target + sysroot
-BBNIX_SYSROOT=/path nix develop      # override the BYO sysroot location
+# BBNIX_SYSROOT must point at your bbndk-linux tree — there is no default.
+export BBNIX_SYSROOT=/path/to/bbndk-linux
 
-# Model A reads the sysroot in place, so package builds need the relaxed sandbox:
-nix build --option sandbox relaxed .#zlib .#openssl .#openssh
+nix develop                          # enters the bbnix shell; reports target + sysroot
+
+# Builds read the sysroot in place (Model A), so they run impure and need the
+# relaxed sandbox. BBNIX_SYSROOT is read at eval time; an unset value throws.
+BBNIX_SYSROOT=/path/to/bbndk-linux \
+  nix build --impure --option sandbox relaxed .#zlib .#openssl .#openssh
 ```
 
 The userland deploys as a relocatable `bin/` + `lib/` bundle pushed to the device;

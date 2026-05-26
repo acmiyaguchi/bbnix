@@ -16,3 +16,5 @@ bbndk-linux/
 .direnv/
 .env
 .env.*
+!.envrc
+!.env.example

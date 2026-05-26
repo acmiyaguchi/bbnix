@@ -21,7 +21,9 @@ checks/            # validate.sh (toolchain), validate-elf.sh (built libs/binari
 
 - **Model A — impure path (default).** Reference the gitignored `sdk/bbndk-linux`
   tree in place. Zero proprietary bytes in store or git; not a pure build.
-  `BBNIX_SYSROOT` overrides the path.
+  The path comes from `BBNIX_SYSROOT` (read at eval via `builtins.getEnv`) with
+  **no default** — unset throws, so builds run `--impure`
+  (`BBNIX_SYSROOT=/path nix build --impure .#gcc`).
 - **Model B — `requireFile` store input.** Bring the sysroot into the store once,
   content-addressed; pure and cacheable. Marked `meta.license = unfree`.
 
