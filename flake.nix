@@ -59,7 +59,7 @@
         # Userland recipes (pkgs/), cross-built with the toolchain above against
         # the BYO sysroot. Suffixed -qnx where the bare name would collide with a
         # host nixpkgs attr (pkgs.zlib is consumed by gcc.nix). Dependency chain:
-        # zlib + openssl -> openssh.
+        # zlib + openssl -> openssh; zlib + openssl -> curl.
         zlib-qnx = pkgs.callPackage ./pkgs/zlib.nix {
           inherit binutils gcc;
           target = qnxTarget;
@@ -73,6 +73,16 @@
         };
 
         openssh = pkgs.callPackage ./pkgs/openssh.nix {
+          inherit binutils gcc;
+          openssl = openssl-qnx;
+          zlib = zlib-qnx;
+          target = qnxTarget;
+          sysroot = sysrootRoot;
+        };
+
+        # HTTPS client over our from-source OpenSSL 3.x + zlib (issue #2). Static
+        # libcurl.a for downstream partial-static linking, plus the curl CLI.
+        curl = pkgs.callPackage ./pkgs/curl.nix {
           inherit binutils gcc;
           openssl = openssl-qnx;
           zlib = zlib-qnx;
@@ -157,7 +167,7 @@
         # land. Sequence (see README): toolchain PoC -> ncurses -> openssh ->
         # tmux + mosh-client -> busybox subset.
         packages = {
-          inherit binutils gcc-stage1 gcc openssh mosh tmux zsh btcrash;
+          inherit binutils gcc-stage1 gcc openssh curl mosh tmux zsh btcrash;
           zlib = zlib-qnx;
           openssl = openssl-qnx;
           ncurses = ncurses-qnx;
