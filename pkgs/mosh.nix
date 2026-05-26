@@ -42,6 +42,14 @@ stdenv.mkDerivation (qnx.drvAttrs // rec {
     sha256 = "1pax8sqlvcc7ammsxd9r53yx4m2hg1827wfz6f4rrwjx9q9lnbl7";
   };
 
+  # Roaming-crash fix: the GCC-9-compiled client links the device's GCC-4.8.3
+  # libstdc++/libgcc_s, whose C++ exception/RTTI ABI mismatches ours, so any
+  # THROWN exception crashes in __cxa_type_match during unwinding. This drops the
+  # throws on the UDP receive path (the network-down hot path), signalling
+  # "no data" with an empty string instead. Applied by stdenv's default
+  # patchPhase (only configurePhase is overridden below).
+  patches = [ ./patches/mosh-1.4.0-no-throw-recv.patch ];
+
   # pkg-config is still needed for the optional Nettle/bash-completion probes
   # (we feed the required modules' flags directly, below). perl only does a
   # build-time syntax check of the `mosh` launcher wrapper -- on-device we

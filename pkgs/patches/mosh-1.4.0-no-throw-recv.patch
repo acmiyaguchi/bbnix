@@ -1,0 +1,83 @@
+--- a/src/network/network.cc	2026-05-25 17:37:52.069028035 -0700
++++ b/src/network/network.cc	2026-05-25 17:39:01.107416932 -0700
+@@ -41,6 +41,7 @@
+ #include <netinet/in.h>
+ #include <assert.h>
+ #include <errno.h>
++#include <stdio.h>
+ #include <string.h>
+ #include <unistd.h>
+ 
+@@ -434,23 +435,23 @@
+   for ( std::deque< Socket >::const_iterator it = socks.begin();
+ 	it != socks.end();
+ 	it++ ) {
+-    string payload;
+-    try {
+-      payload = recv_one( it->fd());
+-    } catch ( NetworkException & e ) {
+-      if ( (e.the_errno == EAGAIN)
+-	   || (e.the_errno == EWOULDBLOCK) ) {
+-	continue;
+-      } else {
+-	throw;
+-      }
++    /* recv_one() returns an empty string for "no data on this socket". It does
++       NOT throw on the receive path: on BB10/QNX the GCC-9 client links the
++       device's GCC-4.8.3 libstdc++, whose C++ exception/RTTI ABI mismatches
++       ours, so any thrown exception crashes in __cxa_type_match during
++       unwinding. mosh payloads are never legitimately empty (encrypted Message
++       + Packet header overhead), so empty is an unambiguous sentinel. */
++    string payload( recv_one( it->fd()) );
++    if ( payload.empty() ) {
++      continue;
+     }
+ 
+     /* succeeded */
+     prune_sockets();
+     return payload;
+   }
+-  throw NetworkException( "No packet received" );
++  /* No socket had data; signal "no packet" without throwing. */
++  return string();
+ }
+ 
+ string Connection::recv_one( int sock_to_recv )
+@@ -483,11 +484,20 @@
+   ssize_t received_len = recvmsg( sock_to_recv, &header, MSG_DONTWAIT );
+ 
+   if ( received_len < 0 ) {
+-    throw NetworkException( "recvmsg", errno );
++    /* No data (EAGAIN/EWOULDBLOCK) or a transient/hard socket error during
++       roaming (ENETUNREACH/ENETDOWN/...). Do NOT throw: a thrown C++ exception
++       crashes the unwinder on this platform. Return empty ("no data"); mosh's
++       timeout/heartbeat logic handles recovery. Log unexpected errnos so the
++       failure isn't silent (captured by the mosh wrapper's stderr log). */
++    if ( errno != EAGAIN && errno != EWOULDBLOCK ) {
++      fprintf( stderr, "mosh recvmsg: %s\n", strerror( errno ) );
++    }
++    return string();
+   }
+ 
+   if ( header.msg_flags & MSG_TRUNC ) {
+-    throw NetworkException( "Received oversize datagram", errno );
++    /* Oversize datagram: not a real mosh packet. Drop it, don't throw. */
++    return string();
+   }
+ 
+   /* receive ECN */
+--- a/src/network/networktransport-impl.h	2026-05-25 17:37:52.069062055 -0700
++++ b/src/network/networktransport-impl.h	2026-05-25 17:39:12.778560147 -0700
+@@ -71,6 +71,12 @@
+ void Transport<MyState, RemoteState>::recv( void )
+ {
+   string s( connection.recv() );
++  if ( s.empty() ) {
++    /* Connection::recv() now returns empty for "no datagram available" instead
++       of throwing (the QNX libstdc++ ABI mismatch makes throwing crash). The
++       Fragment ctor would mis-parse an empty string, so bail here. */
++    return;
++  }
+   Fragment frag( s );
+ 
+   if ( fragments.add_fragment( frag ) ) { /* complete packet */
