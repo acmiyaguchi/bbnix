@@ -37,6 +37,10 @@ stdenv.mkDerivation (qnx.drvAttrs // rec {
   pname = "bbnix-mosh";
   version = "1.4.0";
 
+  # Keep the `mosh` wrapper's `#!/bin/sh` intact: stdenv's patchShebangs would
+  # rewrite it to a host nix-store bash path that doesn't exist on the device.
+  dontPatchShebangs = true;
+
   src = fetchurl {
     url = "https://github.com/mobile-shell/mosh/releases/download/mosh-${version}/mosh-${version}.tar.gz";
     sha256 = "1pax8sqlvcc7ammsxd9r53yx4m2hg1827wfz6f4rrwjx9q9lnbl7";
@@ -115,6 +119,11 @@ stdenv.mkDerivation (qnx.drvAttrs // rec {
   installPhase = ''
     runHook preInstall
     make install
+    # Ship our pure-shell launcher as `mosh` (upstream's is Perl, which we don't
+    # port to the device). It dials ssh -> mosh-server, parses the CONNECT
+    # handshake, hands mosh-client a numeric IP, and resolves the bundle's libs
+    # from $0 at runtime. See pkgs/files/mosh.
+    install -Dm755 ${./files/mosh} $out/bin/mosh
     runHook postInstall
   '';
 

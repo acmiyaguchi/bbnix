@@ -1,0 +1,173 @@
+#!/bin/sh
+# mosh - pure-shell stand-in for the upstream Perl `mosh` wrapper.
+#
+# Dials out in the Blink model: ssh to the remote host, start mosh-server
+# there, parse its "MOSH CONNECT <port> <key>" handshake, then exec the local
+# mosh-client. No Perl, and no external text tools (head/sed/grep/tr) - the
+# device's /bin/sh is minimal, so all parsing uses shell builtins only.
+
+set -u
+
+# Locate the bundle root from $0 so ssh / mosh-client and their libs resolve
+# wherever the bundle is unpacked.
+self=$0
+case $self in
+	*/*) bindir=${self%/*} ;;
+	*)   p=$(command -v -- "$self" 2>/dev/null) && bindir=${p%/*} || bindir=. ;;
+esac
+root=${bindir%/bin}
+
+# Both the bundled ssh and mosh-client need the from-source libs (libcrypto/
+# libssl/libz/libncursesw/libbbnixcompat); export before either runs. Idempotent
+# if Term49's launcher already set these.
+export LD_LIBRARY_PATH="$root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export TERMINFO="$root/terminfo"
+: "${TERM:=xterm-256color}"
+export TERM
+
+ssh_cmd="$bindir/ssh"
+server="mosh-server"
+colors=256
+client_ip=
+
+usage() {
+	echo "usage: mosh [--ssh=CMD] [--server=CMD] [--predict=MODE] [--ip=ADDR] [user@]host [-- command...]" >&2
+	exit "${1:-1}"
+}
+
+host=
+while [ $# -gt 0 ]; do
+	case $1 in
+		--)          shift; break ;;
+		--ssh=*)     ssh_cmd=${1#*=} ;;
+		--server=*)  server=${1#*=} ;;
+		--predict=*) MOSH_PREDICTION_DISPLAY=${1#*=}; export MOSH_PREDICTION_DISPLAY ;;
+		--ip=*)      client_ip=${1#*=} ;;
+		-h|--help)   usage 0 ;;
+		-*)          echo "mosh: unknown option: $1" >&2; usage ;;
+		*)           host=$1; shift; break ;;
+	esac
+	shift
+done
+[ -n "$host" ] || usage
+
+# Args after the host are an optional remote command, with an optional "--"
+# separator. Guard with $# first: a bare $* / $@ with zero positional params
+# errors under `set -u` on the device's /bin/sh.
+if [ "$#" -gt 0 ] && [ "$1" = "--" ]; then
+	shift
+fi
+if [ "$#" -gt 0 ]; then
+	remote_cmd=$*
+else
+	remote_cmd=
+fi
+# Ask the remote mosh-server for a session. `new -s` binds the server IP from
+# $SSH_CONNECTION and prints the CONNECT handshake on stdout. We also echo
+# $SSH_CONNECTION (\$ escaped to expand remotely) as a fallback IP source.
+server_run="echo MOSH_SSHIP \$SSH_CONNECTION; $server new -s -c $colors -l LANG=en_US.UTF-8"
+[ -n "$remote_cmd" ] && server_run="$server_run -- $remote_cmd"
+
+# mosh-client does NO name resolution and aborts ("bad ip address") on a
+# hostname, so we must hand it a numeric IP. -v makes ssh log the address it
+# resolved-and-connected to ("Connecting to HOST [IP] port N") - the correct
+# UDP target (NAT-safe: same path the ssh/TCP took). Merge stderr to capture
+# it alongside the remote stdout.
+out=$("$ssh_cmd" -v "$host" "$server_run" 2>&1) || {
+	echo "mosh: ssh to $host failed" >&2
+	[ -n "$out" ] && echo "$out" >&2
+	exit 1
+}
+
+# Scan the whole output (parameter expansion only - no grep/awk on the device).
+# Do NOT break early: mosh-server flushes "MOSH CONNECT" immediately while the
+# shell's echoed MOSH_SSHIP can arrive after it, so we must read to the end.
+port= key= ssh_ip= sship=
+while IFS= read -r line; do
+	case $line in
+		*"Connecting to "*"["*"]"*)
+			# Quote the brackets: unquoted `*[` is read as an (unterminated)
+			# character class by the device /bin/sh and the strip no-ops.
+			t=${line#*"["}; ssh_ip=${t%%"]"*} ;;
+		"MOSH_SSHIP "*)
+			# "<clientip> <clientport> <serverip> <serverport>"; want field 3.
+			r=${line#MOSH_SSHIP }
+			r=${r#* }; r=${r#* }
+			sship=${r%% *} ;;
+		"MOSH CONNECT "*)
+			rest=${line#MOSH CONNECT }
+			port=${rest%% *}
+			key=${rest##* } ;;
+	esac
+done <<EOF
+$out
+EOF
+
+if [ -z "$port" ] || [ -z "$key" ]; then
+	echo "mosh: no MOSH CONNECT handshake from $host (is mosh-server installed there?)" >&2
+	exit 1
+fi
+
+# IP priority: explicit --ip, then what ssh actually connected to, then the
+# server's self-reported address. mosh-client does no DNS, so we never hand it
+# a name - fail loudly (with the candidates) instead.
+addr=$client_ip
+[ -n "$addr" ] || addr=$ssh_ip
+[ -n "$addr" ] || addr=$sship
+
+# Breadcrumb (small, overwritten each run; readable over ssh for debugging).
+{
+	echo "host=$host client_ip=[$client_ip] ssh_ip=[$ssh_ip] sship=[$sship] => addr=[$addr] port=[$port]"
+	echo "--- raw ssh/mosh-server output ---"
+	echo "$out"
+} > "$HOME/.mosh-debug.log" 2>/dev/null
+
+if [ -z "$addr" ]; then
+	echo "mosh: could not resolve a numeric IP for $host" >&2
+	echo "mosh: ssh did not log a 'Connecting to HOST [IP]' line and \$SSH_CONNECTION was empty." >&2
+	echo "mosh: retry with an explicit address, e.g.  mosh --ip=<server-ip> $host" >&2
+	exit 1
+fi
+
+# Guard: only a plausible numeric IP (v4 dotted / v6 hex:colon) may reach
+# mosh-client - it does no DNS and aborts (mangling the tty) on anything else.
+case $addr in
+	*[!0-9A-Fa-f.:]* | *" "* | "")
+		echo "mosh: resolved address looks invalid: '$addr'" >&2
+		echo "mosh: retry with an explicit address, e.g.  mosh --ip=<server-ip> $host" >&2
+		exit 1 ;;
+esac
+
+echo "mosh: connecting to $addr:$port" >&2
+export MOSH_KEY="$key"
+
+# Capture mosh-client's stderr to a file (no `tee` on the device) so any
+# diagnostic output is preserved: the patched recv path's "mosh recvmsg:"
+# errno lines, or an abort message from a future ABI mismatch. We fold it into
+# the debug log and replay it to the screen afterwards so nothing is hidden.
+errlog="$HOME/.mosh-stderr.log"
+# Optional crash tracer: if the btcrash preload is present, load it so a
+# SIGSEGV/abort dumps a symbolic backtrace into the captured stderr.
+preload=
+[ -f "$root/lib/libbtcrash.so" ] && preload="$root/lib/libbtcrash.so"
+LD_PRELOAD="$preload" "$bindir/mosh-client" "$addr" "$port" 2>"$errlog"
+rc=$?
+
+{
+	echo "--- mosh-client stderr (rc=$rc) ---"
+	cat "$errlog" 2>/dev/null
+} >> "$HOME/.mosh-debug.log" 2>/dev/null
+
+# mosh-client restores the tty on a clean exit; if it aborted (e.g. bad IP, or
+# a roaming crash) it can leave the alt-screen, mouse-tracking, or scroll-region
+# set - which is why scrolling breaks. Undo those. The device /bin/sh has no
+# printf, so emit the escapes via the bundled zsh's `print`.
+if [ "$rc" -ne 0 ]; then
+	stty sane 2>/dev/null
+	"$bindir/zsh" -fc 'print -n -- "\e[?1049l\e[?1000l\e[?1002l\e[?1003l\e[?1006l\e[r\e[?25h\e[0m"' 2>/dev/null
+fi
+
+# Replay mosh-client's stderr now that the terminal is sane again.
+[ -s "$errlog" ] && cat "$errlog" >&2
+
+exit "$rc"

@@ -143,12 +143,21 @@
           target = qnxTarget;
           sysroot = sysrootRoot;
         };
+
+        # LD_PRELOAD crash tracer; deployed into the bundle's lib/ for diagnosing
+        # the next C++ exception/RTTI ABI fault. The `mosh` launcher loads it
+        # automatically when present.
+        btcrash = pkgs.callPackage ./pkgs/btcrash.nix {
+          inherit binutils gcc;
+          target = qnxTarget;
+          sysroot = sysrootRoot;
+        };
       in {
         # Recipes live under toolchain/ and pkgs/ and are wired in here as they
         # land. Sequence (see README): toolchain PoC -> ncurses -> openssh ->
         # tmux + mosh-client -> busybox subset.
         packages = {
-          inherit binutils gcc-stage1 gcc openssh mosh tmux zsh;
+          inherit binutils gcc-stage1 gcc openssh mosh tmux zsh btcrash;
           zlib = zlib-qnx;
           openssl = openssl-qnx;
           ncurses = ncurses-qnx;
