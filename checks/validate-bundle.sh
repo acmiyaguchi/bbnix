@@ -32,9 +32,9 @@ is_elf() { [ "$(od -An -tx1 -N4 "$1" 2>/dev/null | tr -d ' ')" = "7f454c46" ]; }
 
 echo "== deploy-bundle: $BUNDLE =="
 
-# 1. Per-artifact ELF checks. bin/ holds executables (skip the pure-shell mosh
-#    launcher); lib/ holds shared objects. validate-elf.sh exits non-zero on any
-#    failure, which aborts us under set -e.
+# 1. Per-artifact ELF checks. bin/ holds executables (including the sh-launcher
+#    ELF shipped as bin/mosh - issue #6); lib/ holds shared objects.
+#    validate-elf.sh exits non-zero on any failure, which aborts us under set -e.
 shopt -s nullglob
 for f in "$BUNDLE"/bin/*; do
   if is_elf "$f"; then
@@ -43,6 +43,15 @@ for f in "$BUNDLE"/bin/*; do
     echo "-- skip non-ELF $f (launcher script)"
   fi
 done
+
+# The full bundle's bin/mosh must be the sh-launcher ELF (a bare shell script
+# there lands non-executable after BB10 install), with the real launcher as a
+# libexec/ sidecar. Key off the sidecar's presence.
+if [ -e "$BUNDLE/libexec/mosh" ]; then
+  is_elf "$BUNDLE/bin/mosh" || { echo "FAIL: bin/mosh is not an ELF (issue #6)"; exit 1; }
+  [ -s "$BUNDLE/libexec/mosh" ] || { echo "FAIL: empty libexec/mosh sidecar"; exit 1; }
+  echo "  mosh launcher (ELF + libexec sidecar) OK"
+fi
 for f in "$BUNDLE"/lib/*.so*; do
   bash "$VALIDATE_ELF" "$BU_PREFIX" "$f" lib
 done
