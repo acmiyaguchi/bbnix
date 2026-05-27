@@ -8,13 +8,18 @@
 
 set -u
 
-# Locate the bundle root from $0 so ssh / mosh-client and their libs resolve
-# wherever the bundle is unpacked.
+# Locate the bundle's bin/ dir so ssh / mosh-client / zsh and their libs resolve
+# wherever the bundle is unpacked. The sh-launcher ELF passes BBNIX_BINDIR; the
+# $0 fallback keeps standalone/dev invocation working.
 self=$0
-case $self in
-	*/*) bindir=${self%/*} ;;
-	*)   p=$(command -v -- "$self" 2>/dev/null) && bindir=${p%/*} || bindir=. ;;
-esac
+if [ -n "${BBNIX_BINDIR:-}" ]; then
+	bindir=$BBNIX_BINDIR
+else
+	case $self in
+		*/*) bindir=${self%/*} ;;
+		*)   p=$(command -v -- "$self" 2>/dev/null) && bindir=${p%/*} || bindir=. ;;
+	esac
+fi
 root=${bindir%/bin}
 
 # Both the bundled ssh and mosh-client need the from-source libs (libcrypto/

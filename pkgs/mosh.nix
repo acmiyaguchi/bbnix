@@ -119,11 +119,9 @@ stdenv.mkDerivation (qnx.drvAttrs // rec {
   installPhase = ''
     runHook preInstall
     make install
-    # Ship our pure-shell launcher as `mosh` (upstream's is Perl, which we don't
-    # port to the device). It dials ssh -> mosh-server, parses the CONNECT
-    # handshake, hands mosh-client a numeric IP, and resolves the bundle's libs
-    # from $0 at runtime. See pkgs/files/mosh.
-    install -Dm755 ${./files/mosh} $out/bin/mosh
+    # Pure-shell replacement for upstream's Perl wrapper. It lives in libexec/;
+    # the deploy bundle exposes it through the sh-launcher ELF (issue #6).
+    install -Dm644 ${./files/mosh} $out/libexec/mosh
     runHook postInstall
   '';
 

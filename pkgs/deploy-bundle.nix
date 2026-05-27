@@ -12,7 +12,8 @@
 # Variants nest minimal ⊂ ssh ⊂ full:
 #   minimal  zsh + tmux + ncursesw + libbbnixcompat + terminfo
 #   ssh      + ssh/scp/sftp/ssh-keygen + libssl/libcrypto/libz + CA bundle
-#   full     + mosh-client + the mosh launcher + curl + libbtcrash (LD_PRELOAD)
+#   full     + mosh-client + the mosh launcher (sh-launcher ELF + libexec sidecar)
+#            + curl + libbtcrash (LD_PRELOAD)
 {
   stdenv,
   lib,
@@ -22,6 +23,7 @@
   tmux,
   zsh,
   btcrash,
+  sh-launcher,
   ncurses,
   openssl,
   zlib,
@@ -77,9 +79,11 @@ stdenv.mkDerivation {
     cp ${cacert}/etc/ssl/certs/ca-bundle.crt $out/etc/ssl/certs/ca-certificates.crt
 
   '' + lib.optionalString hasFull ''
-    # full: mosh-client + its pure-shell launcher (resolves the bundle root from
-    # $0 and auto-loads libbtcrash.so when present), plus the static curl CLI.
-    cp ${mosh}/bin/mosh-client ${mosh}/bin/mosh $out/bin/
+    # full: mosh-client + pure-shell launcher (bin/mosh ELF trampoline over
+    # libexec/mosh; issue #6), plus the static curl CLI.
+    cp ${mosh}/bin/mosh-client $out/bin/
+    cp ${sh-launcher}/bin/sh-launcher $out/bin/mosh
+    install -Dm644 ${mosh}/libexec/mosh $out/libexec/mosh
     cp ${curl}/bin/curl $out/bin/
     cp -L ${btcrash}/lib/libbtcrash.so $out/lib/
 

@@ -32,9 +32,9 @@ is_elf() { [ "$(od -An -tx1 -N4 "$1" 2>/dev/null | tr -d ' ')" = "7f454c46" ]; }
 
 echo "== deploy-bundle: $BUNDLE =="
 
-# 1. Per-artifact ELF checks. bin/ holds executables (skip the pure-shell mosh
-#    launcher); lib/ holds shared objects. validate-elf.sh exits non-zero on any
-#    failure, which aborts us under set -e.
+# 1. Per-artifact ELF checks. bin/ holds executables (including the sh-launcher
+#    ELF shipped as bin/mosh - issue #6); lib/ holds shared objects.
+#    validate-elf.sh exits non-zero on any failure, which aborts us under set -e.
 shopt -s nullglob
 for f in "$BUNDLE"/bin/*; do
   if is_elf "$f"; then
@@ -43,6 +43,15 @@ for f in "$BUNDLE"/bin/*; do
     echo "-- skip non-ELF $f (launcher script)"
   fi
 done
+
+# If mosh ships, require the issue #6 layout: bin/mosh is the ELF trampoline and
+# libexec/mosh is the real shell sidecar. Key off mosh-client so dropping both
+# launcher files cannot silently skip this check.
+if [ -e "$BUNDLE/bin/mosh-client" ]; then
+  is_elf "$BUNDLE/bin/mosh" || { echo "FAIL: bin/mosh is not an ELF (issue #6)"; exit 1; }
+  [ -s "$BUNDLE/libexec/mosh" ] || { echo "FAIL: missing/empty libexec/mosh sidecar (issue #6)"; exit 1; }
+  echo "  mosh launcher (ELF + libexec sidecar) OK"
+fi
 for f in "$BUNDLE"/lib/*.so*; do
   bash "$VALIDATE_ELF" "$BU_PREFIX" "$f" lib
 done
