@@ -173,13 +173,10 @@
           sysroot = sysrootRoot;
         };
 
-        # Generic ELF trampoline (issue #6): the executable bin/ entry point the
-        # BB10 installer will mark +x, which execs /bin/sh on a non-executable
-        # libexec/ shell sidecar. Installed as the bundle's bin/mosh.
+        # Generic ELF trampoline for libexec shell sidecars (issue #6).
         sh-launcher = pkgs.callPackage ./pkgs/sh-launcher.nix {
           inherit binutils gcc;
           target = qnxTarget;
-          sysroot = sysrootRoot;
         };
 
         # Relocatable deploy bundle (issue #4): a bin/ + lib/ + terminfo/ + CA

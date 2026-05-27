@@ -1,12 +1,6 @@
 # SPDX-License-Identifier: MIT
-# sh-launcher: a generic ELF trampoline for shell-script tools in the bbnix bundle.
-#
-# The BB10 packaging path strips a script's execute bit and the on-device
-# installer only restores +x on ELF files, so a `#!/bin/sh` launcher can never
-# run under the read-only app/native image. This tiny ELF is the executable
-# entry point the installer will mark +x; it execs `/bin/sh` on the real shell
-# logic kept as a non-executable libexec/ sidecar. See pkgs/files/sh-launcher.c
-# and issue #6. Convention: installed as bin/<tool>, it execs <root>/libexec/<tool>.
+# Generic ELF trampoline for bundle shell launchers; see pkgs/files/sh-launcher.c
+# and issue #6 for the BB10 execute-bit rationale and bin/<tool> convention.
 {
   stdenv,
   lib,
@@ -14,7 +8,6 @@
   binutils,
   gcc,
   target ? "arm-unknown-nto-qnx8.0.0eabi",
-  sysroot,
 }:
 
 let

@@ -20,10 +20,11 @@
 #include <string.h>
 #include <libgen.h>
 #include <limits.h>
+#include <sys/stat.h>
 
 int main(int argc, char **argv)
 {
-	const char *arg0 = (argc > 0 && argv[0]) ? argv[0] : "sh-launcher";
+	const char *arg0 = (argc > 0 && argv[0] && argv[0][0]) ? argv[0] : "sh-launcher";
 	char self[PATH_MAX];
 
 	/* Resolve our own path. If argv[0] has a slash it is a path (the device
@@ -48,10 +49,12 @@ int main(int argc, char **argv)
 				/* An empty component (leading/trailing/`::`) means ".". */
 				if (dlen == 0) { dir = &dot; dlen = 1; }
 				if (dlen + 1 + strlen(arg0) + 1 <= sizeof(self)) {
+					struct stat st;
 					memcpy(self, dir, dlen);
 					self[dlen] = '/';
 					strcpy(self + dlen + 1, arg0);
-					if (access(self, X_OK) == 0) { found = 1; break; }
+					if (stat(self, &st) == 0 && S_ISREG(st.st_mode) &&
+					    access(self, X_OK) == 0) { found = 1; break; }
 				}
 				if (!colon) break;
 				p = colon + 1;
@@ -91,16 +94,20 @@ int main(int argc, char **argv)
 	}
 
 	/* Hand the real bin dir to the script so it resolves the bundle root. */
-	setenv("BBNIX_BINDIR", bindir, 1);
+	if (setenv("BBNIX_BINDIR", bindir, 1) != 0) {
+		perror("setenv BBNIX_BINDIR");
+		_exit(127);
+	}
 
 	/* exec /bin/sh <sidecar> <original args...>. */
-	char **shargv = malloc((size_t)(argc + 2) * sizeof(char *));
+	size_t nargs = (argc > 1) ? (size_t)(argc - 1) : 0;
+	char **shargv = malloc((nargs + 3) * sizeof(char *));
 	if (!shargv) { perror("malloc"); _exit(127); }
 	shargv[0] = "/bin/sh";
 	shargv[1] = sidecar;
 	for (int i = 1; i < argc; i++)
-		shargv[i + 1] = argv[i];
-	shargv[argc + 1] = NULL;
+		shargv[(size_t)i + 1] = argv[i];
+	shargv[nargs + 2] = NULL;
 
 	execv("/bin/sh", shargv);
 	perror("sh-launcher: exec /bin/sh");

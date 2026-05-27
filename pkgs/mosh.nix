@@ -119,13 +119,8 @@ stdenv.mkDerivation (qnx.drvAttrs // rec {
   installPhase = ''
     runHook preInstall
     make install
-    # Ship our pure-shell launcher (upstream's is Perl, which we don't port to
-    # the device). It dials ssh -> mosh-server, parses the CONNECT handshake,
-    # hands mosh-client a numeric IP, and resolves the bundle's libs at runtime.
-    # It lives in libexec/ as a non-executable data file: the BB10 installer
-    # only restores +x on ELFs, so it cannot be the bin/ entry point - the
-    # sh-launcher ELF (installed as bin/mosh) execs `/bin/sh` on it. See issue #6
-    # and pkgs/files/mosh.
+    # Pure-shell replacement for upstream's Perl wrapper. It lives in libexec/;
+    # the deploy bundle exposes it through the sh-launcher ELF (issue #6).
     install -Dm644 ${./files/mosh} $out/libexec/mosh
     runHook postInstall
   '';

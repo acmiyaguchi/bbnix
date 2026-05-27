@@ -44,11 +44,9 @@ for f in "$BUNDLE"/bin/*; do
   fi
 done
 
-# Whenever the bundle ships mosh, bin/mosh must be the sh-launcher ELF (a bare
-# shell script there lands non-executable after BB10 install) AND the real
-# launcher must travel as a non-empty libexec/ sidecar. Key off mosh-client,
-# which is always present with the launcher, so dropping *both* mosh files can't
-# silently skip this (issue #6).
+# If mosh ships, require the issue #6 layout: bin/mosh is the ELF trampoline and
+# libexec/mosh is the real shell sidecar. Key off mosh-client so dropping both
+# launcher files cannot silently skip this check.
 if [ -e "$BUNDLE/bin/mosh-client" ]; then
   is_elf "$BUNDLE/bin/mosh" || { echo "FAIL: bin/mosh is not an ELF (issue #6)"; exit 1; }
   [ -s "$BUNDLE/libexec/mosh" ] || { echo "FAIL: missing/empty libexec/mosh sidecar (issue #6)"; exit 1; }

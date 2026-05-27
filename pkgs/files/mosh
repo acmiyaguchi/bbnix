@@ -9,9 +9,8 @@
 set -u
 
 # Locate the bundle's bin/ dir so ssh / mosh-client / zsh and their libs resolve
-# wherever the bundle is unpacked. The sh-launcher ELF trampoline (bin/mosh)
-# execs us from libexec/ and passes the real bin dir via BBNIX_BINDIR; prefer
-# that. The $0 fallback keeps standalone/dev invocation working. See issue #6.
+# wherever the bundle is unpacked. The sh-launcher ELF passes BBNIX_BINDIR; the
+# $0 fallback keeps standalone/dev invocation working.
 self=$0
 if [ -n "${BBNIX_BINDIR:-}" ]; then
 	bindir=$BBNIX_BINDIR

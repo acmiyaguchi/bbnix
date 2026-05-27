@@ -79,12 +79,8 @@ stdenv.mkDerivation {
     cp ${cacert}/etc/ssl/certs/ca-bundle.crt $out/etc/ssl/certs/ca-certificates.crt
 
   '' + lib.optionalString hasFull ''
-    # full: mosh-client + its pure-shell launcher, plus the static curl CLI. The
-    # launcher ships as an ELF trampoline (bin/mosh) over a non-executable
-    # libexec/mosh sidecar: the BB10 installer only restores +x on ELFs, so a
-    # bare script in bin/ lands non-executable (issue #6). The trampoline execs
-    # `/bin/sh` on the sidecar, which resolves the bundle root and auto-loads
-    # libbtcrash.so when present.
+    # full: mosh-client + pure-shell launcher (bin/mosh ELF trampoline over
+    # libexec/mosh; issue #6), plus the static curl CLI.
     cp ${mosh}/bin/mosh-client $out/bin/
     cp ${sh-launcher}/bin/sh-launcher $out/bin/mosh
     install -Dm644 ${mosh}/libexec/mosh $out/libexec/mosh
