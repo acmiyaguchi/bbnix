@@ -44,10 +44,14 @@ own modern GCC slots into.
 
 ## Per-package build notes
 
-- **busybox** *(subset)* — fills gaps in the minimal QNX userland. Written against
-  Linux (`/proc`, Linux syscalls), so expect a patched subset, not a clean full
-  build. Open question: a small portable coreutils set may beat dragging in
-  busybox's Linux assumptions.
+- **busybox** *(1.36.1 subset)* — fills gaps in the minimal QNX userland with a
+  conservative applet set: basic coreutils, grep/sed/find/xargs, tar/gzip/bzip2/
+  xz, clear/reset/resize. BusyBox is Linux-first, so applets needing `/proc`,
+  Linux mount/process APIs, `utimensat`, or richer termios stay disabled until
+  individually ported. The QNX port patches endian/byteswap detection, libc
+  feature assumptions, `itoa`/`utoa` symbol collisions, two-arg `makedev`,
+  `strndup`, and BSD-style `getopt` reset (`optind=1`). Symlink applets and
+  `busybox APPLET ...` are smoke-tested on a Q10 over dev-mode SSH.
 - **openssh** — client **and** sshd (OpenSSH 10.0p2), on from-source **OpenSSL
   3.x** + **zlib 1.3.x** (`.so.3`/`.so.1`, not the sysroot's EOL `.so.2`). Cross
   needs pre-seeded `ac_cv_*` cache vars, a `<syslog.h>` shim (QNX ships slog2), and
@@ -112,6 +116,9 @@ own modern GCC slots into.
    - zsh: `zsh --version` -> 5.9, scripting/builtins, and UTF-8 string ops
      (`${#"héllo"}` -> 5, case-mapping preserves `é`) — multibyte works with no
      `BBNIX_CODESET` override.
+   - busybox: `busybox --list`, direct `busybox echo`, and applet-symlink smoke
+     tests for `uname`, `cat`, `grep`, `sed`, and `find` in
+     `/accounts/1000/shared/documents`.
 
 ## Deploy
 
@@ -127,7 +134,7 @@ sets `TERMINFO`, and prefers `bin/zsh`). Three nested variants:
 
 | attr | adds | for |
 | --- | --- | --- |
-| `.#deploy-bundle-minimal` | `zsh` `tmux` + `libncursesw`/`libbbnixcompat` + `terminfo/` | interactive shell only |
+| `.#deploy-bundle-minimal` | `zsh` `tmux` `busybox` + `libncursesw`/`libbbnixcompat` + `terminfo/` | interactive shell + POSIX utility subset |
 | `.#deploy-bundle-ssh` | + `ssh scp sftp ssh-keygen` + `libssl`/`libcrypto`/`libz` + CA bundle | + OpenSSH client / HTTPS |
 | `.#deploy-bundle-full` (= `.#deploy-bundle`) | + `mosh-client` + the `mosh` launcher + `curl` + `libbtcrash.so` | everything interactive |
 
@@ -139,7 +146,7 @@ Layout (note `terminfo/` at the bundle root — what the launcher's `TERMINFO`
 expects — not `share/terminfo`):
 
 ```text
-result/bin/   zsh tmux [ssh scp sftp ssh-keygen] [mosh-client mosh curl]
+result/bin/   zsh tmux busybox {cat,grep,sed,find,...} [ssh scp sftp ssh-keygen] [mosh-client mosh curl]
 result/lib/   libncursesw.so.6 libbbnixcompat.so.1
                 [libssl.so.3 libcrypto.so.3 libz.so.1] [libbtcrash.so]
 result/terminfo/                         # ncurses DB (xterm-256color, …)
@@ -209,6 +216,11 @@ UTF-8.
 `LD_LIBRARY_PATH=<dir>/lib TERMINFO=<dir>/terminfo TERM=xterm-256color`, then
 `zsh`. No `LC_ALL`/`BBNIX_CODESET` is required. Switching Term49's default shell
 from mksh to zsh is a separate, optional follow-up.
+
+**busybox** deploys in `bin/` as `busybox` plus relative applet symlinks. It only
+needs on-device `libsocket.so.3` + `libc.so.3`, so no extra bundle libraries are
+required. Device-smoke examples: `busybox echo`, `uname`, `cat`, `grep`, `sed`,
+and `find` over `/accounts/1000/shared/documents`.
 
 **sshd** additionally needs, at deploy time: host keys (`ssh-keygen -A`), an `sshd`
 privsep user, and `/var/empty` (mode 700, root-owned) — none are build-time

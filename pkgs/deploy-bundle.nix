@@ -10,13 +10,14 @@
 # no RPATH, so the loader finds libs via LD_LIBRARY_PATH=<root>/lib at launch.
 #
 # Variants nest minimal ⊂ ssh ⊂ full:
-#   minimal  zsh + tmux + ncursesw + libbbnixcompat + terminfo
+#   minimal  zsh + tmux + busybox + ncursesw + libbbnixcompat + terminfo
 #   ssh      + ssh/scp/sftp/ssh-keygen + libssl/libcrypto/libz + CA bundle
 #   full     + mosh-client + the mosh launcher (sh-launcher ELF + libexec sidecar)
 #            + curl + libbtcrash (LD_PRELOAD)
 {
   stdenv,
   lib,
+  busybox,
   openssh,
   curl,
   mosh,
@@ -53,12 +54,19 @@ stdenv.mkDerivation {
     runHook preInstall
     mkdir -p $out/bin $out/lib $out/terminfo
 
-    # minimal: interactive shell + multiplexer + their shared deps. tmux/zsh
-    # statically embed libevent + all modules, so only ncursesw + the libc-gap
-    # compat shim need shipping. cp -L derefs each soname symlink to a regular
-    # file under that name (e.g. libncursesw.so.6 from libncursesw.so.6.4).
+    # minimal: interactive shell + multiplexer + BusyBox's conservative POSIX
+    # utility subset and their shared deps. tmux/zsh statically embed libevent +
+    # all modules, so only ncursesw + the libc-gap compat shim need shipping. cp
+    # -L derefs each soname symlink to a regular file under that name (e.g.
+    # libncursesw.so.6 from libncursesw.so.6.4). BusyBox applet symlinks are
+    # relative within bin/, so preserve them.
     cp ${zsh}/bin/zsh   $out/bin/
     cp ${tmux}/bin/tmux $out/bin/
+    cp ${busybox}/bin/busybox $out/bin/
+    for applet in ${busybox}/bin/* ${busybox}/usr/bin/*; do
+      name="$(basename "$applet")"
+      [ "$name" = busybox ] || ln -sf busybox "$out/bin/$name"
+    done
     cp -L ${ncurses}/lib/libncursesw.so.6 $out/lib/
     cp -L ${compat}/lib/libbbnixcompat.so.1 $out/lib/
     cp -r ${ncurses}/share/terminfo/. $out/terminfo/
