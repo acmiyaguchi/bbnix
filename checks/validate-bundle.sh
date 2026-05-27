@@ -44,12 +44,14 @@ for f in "$BUNDLE"/bin/*; do
   fi
 done
 
-# The full bundle's bin/mosh must be the sh-launcher ELF (a bare shell script
-# there lands non-executable after BB10 install), with the real launcher as a
-# libexec/ sidecar. Key off the sidecar's presence.
-if [ -e "$BUNDLE/libexec/mosh" ]; then
+# Whenever the bundle ships mosh, bin/mosh must be the sh-launcher ELF (a bare
+# shell script there lands non-executable after BB10 install) AND the real
+# launcher must travel as a non-empty libexec/ sidecar. Key off mosh-client,
+# which is always present with the launcher, so dropping *both* mosh files can't
+# silently skip this (issue #6).
+if [ -e "$BUNDLE/bin/mosh-client" ]; then
   is_elf "$BUNDLE/bin/mosh" || { echo "FAIL: bin/mosh is not an ELF (issue #6)"; exit 1; }
-  [ -s "$BUNDLE/libexec/mosh" ] || { echo "FAIL: empty libexec/mosh sidecar"; exit 1; }
+  [ -s "$BUNDLE/libexec/mosh" ] || { echo "FAIL: missing/empty libexec/mosh sidecar (issue #6)"; exit 1; }
   echo "  mosh launcher (ELF + libexec sidecar) OK"
 fi
 for f in "$BUNDLE"/lib/*.so*; do

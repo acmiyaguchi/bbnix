@@ -87,7 +87,7 @@ stdenv.mkDerivation {
     # libbtcrash.so when present.
     cp ${mosh}/bin/mosh-client $out/bin/
     cp ${sh-launcher}/bin/sh-launcher $out/bin/mosh
-    install -Dm755 ${mosh}/libexec/mosh $out/libexec/mosh
+    install -Dm644 ${mosh}/libexec/mosh $out/libexec/mosh
     cp ${curl}/bin/curl $out/bin/
     cp -L ${btcrash}/lib/libbtcrash.so $out/lib/
 

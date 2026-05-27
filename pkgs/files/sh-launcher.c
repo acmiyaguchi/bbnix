@@ -39,13 +39,16 @@ int main(int argc, char **argv)
 		const char *path = getenv("PATH");
 		int found = 0;
 		if (path) {
+			const char dot = '.';
 			const char *p = path;
-			while (*p) {
+			for (;;) {
 				const char *colon = strchr(p, ':');
 				size_t dlen = colon ? (size_t)(colon - p) : strlen(p);
-				if (dlen == 0) { dlen = 1; p = "."; }
+				const char *dir = p;
+				/* An empty component (leading/trailing/`::`) means ".". */
+				if (dlen == 0) { dir = &dot; dlen = 1; }
 				if (dlen + 1 + strlen(arg0) + 1 <= sizeof(self)) {
-					memcpy(self, p, dlen);
+					memcpy(self, dir, dlen);
 					self[dlen] = '/';
 					strcpy(self + dlen + 1, arg0);
 					if (access(self, X_OK) == 0) { found = 1; break; }
@@ -60,17 +63,24 @@ int main(int argc, char **argv)
 		}
 	}
 
-	/* Canonicalize if we can; tolerate failure (keep self as resolved above). */
+	/* Capture the invoked basename BEFORE canonicalizing. As a generic
+	 * trampoline this may be installed as a symlink (e.g. bin/mosh ->
+	 * sh-launcher); we must exec libexec/<invoked-name>, not libexec/<target>.
+	 * (dirname/basename clobber their argument, so work on copies.) */
+	char bbuf[PATH_MAX], base[PATH_MAX];
+	strcpy(bbuf, self);
+	strncpy(base, basename(bbuf), sizeof(base) - 1);
+	base[sizeof(base) - 1] = '\0';
+
+	/* Canonicalize for the directory only (resolves a symlinked bin/<tool> and
+	 * any ".."); tolerate failure by keeping self as resolved above. */
 	char canon[PATH_MAX];
 	if (realpath(self, canon) && strlen(canon) < sizeof(self))
 		strcpy(self, canon);
 
-	/* dirname/basename clobber their argument, so work on copies. */
-	char dbuf[PATH_MAX], bbuf[PATH_MAX];
+	char dbuf[PATH_MAX];
 	strcpy(dbuf, self);
-	strcpy(bbuf, self);
 	const char *bindir = dirname(dbuf);
-	const char *base = basename(bbuf);
 
 	/* Sidecar lives at <bindir>/../libexec/<base>; let sh resolve the "..". */
 	char sidecar[PATH_MAX];
