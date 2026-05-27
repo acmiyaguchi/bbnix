@@ -13,8 +13,10 @@ pkgs/              # userland recipes: zlib, openssl, openssh, ncurses, mosh,
                    #   protobuf (+ protobuf-host), libevent, tmux, zsh, qnx-compat
                    #   (then busybox)
   qnx-common.nix   # shared cross scaffolding (cross-tool env, stddef + C++ ABI flags, drv attrs)
+  deploy-bundle.nix # relocatable bin/+lib/+terminfo/+CA tree (Term50 deploy output)
   files/           # syslog.h / langinfo.h shims, wcwidth_compat.h, qnx-compat.c
-checks/            # validate.sh (toolchain), validate-elf.sh (built libs/binaries)
+checks/            # validate.sh (toolchain), validate-elf.sh (built libs/binaries),
+                   #   validate-bundle.sh (staged deploy bundle)
 ```
 
 ## Sysroot wiring
@@ -94,7 +96,11 @@ own modern GCC slots into.
    `checks/validate-elf.sh <binutils> <elf> [lib|exe]` for built libs/binaries.
    Asserts ARM EABI5, interp `/usr/lib/ldqnx.so.2`, `NEEDED libc.so.3`, the
    from-source crypto (`NEEDED .so.3`/`.so.1`, **never** the sysroot's `.so.2`),
-   **no glibc / no `/nix/store` RUNPATH leak**.
+   **no glibc / no `/nix/store` RUNPATH leak**. `checks/validate-bundle.sh
+   <binutils> <bundle>` runs that per artifact across a staged deploy bundle and
+   adds tree-wide asserts (no `/nix/store` text/symlink leak, `terminfo/` +
+   `xterm-256color`, CA bundle present); wired as `checks.deploy-bundle` for
+   `nix flake check --impure`.
 3. **Runtime on device:** `bb-scp` the deploy bundle, `bb-ssh` smoke run, all
    verified on a Q10 (QNX 8.0.0 armle):
    - openssh: `ssh -V`, `ssh -Q cipher`, `ssh-keygen -t ed25519`.
@@ -110,7 +116,55 @@ own modern GCC slots into.
 ## Deploy
 
 The userland deploys as a relocatable bundle: a `bin/` directory of binaries
-beside a `lib/` of the from-source shared libs.
+beside a `lib/` of the from-source shared libs (plus `terminfo/` and a CA store).
+
+### `nix build .#deploy-bundle` (Term50)
+
+`pkgs/deploy-bundle.nix` stages that tree as a first-class output so Term50 can
+pin bbnix as a flake input and drop the result under `app/native/bbnix` (Term50
+resolves `$BBNIX_ROOT`, else `$SANDBOX/app/native/bbnix`, prepends `bin/`+`lib/`,
+sets `TERMINFO`, and prefers `bin/zsh`). Three nested variants:
+
+| attr | adds | for |
+| --- | --- | --- |
+| `.#deploy-bundle-minimal` | `zsh` `tmux` + `libncursesw`/`libbbnixcompat` + `terminfo/` | interactive shell only |
+| `.#deploy-bundle-ssh` | + `ssh scp sftp ssh-keygen` + `libssl`/`libcrypto`/`libz` + CA bundle | + OpenSSH client / HTTPS |
+| `.#deploy-bundle-full` (= `.#deploy-bundle`) | + `mosh-client` + the `mosh` launcher + `curl` + `libbtcrash.so` | everything interactive |
+
+```sh
+nix build --impure --option sandbox relaxed .#deploy-bundle   # -> ./result
+```
+
+Layout (note `terminfo/` at the bundle root — what the launcher's `TERMINFO`
+expects — not `share/terminfo`):
+
+```text
+result/bin/   zsh tmux [ssh scp sftp ssh-keygen] [mosh-client mosh curl]
+result/lib/   libncursesw.so.6 libbbnixcompat.so.1
+                [libssl.so.3 libcrypto.so.3 libz.so.1] [libbtcrash.so]
+result/terminfo/                         # ncurses DB (xterm-256color, …)
+result/ssl/cacert.pem                    # ssh/full: WebPKI CA, from nixpkgs.cacert
+result/etc/ssl/certs/ca-certificates.crt #          (Debian-style path too)
+```
+
+The bundle is relocatable — no `/nix/store` runtime assumptions. The launcher
+sets `LD_LIBRARY_PATH=<root>/lib TERMINFO=<root>/terminfo TERM=xterm-256color`
+(plus `LC_ALL=C BBNIX_CODESET=UTF-8` for tmux).
+
+The canonical install root is **`/accounts/1000/shared/misc/bbnix`** (flake.nix's
+`installRoot`). curl's compile-time CA default and openssl's `--openssldir` are
+baked under it (`<root>/ssl/cacert.pem`), which is exactly where the bundle stages
+`cacert.pem` — so **bare curl verifies HTTPS with no env wrapper** once the tree
+is unpacked there. Unpacked anywhere else, point curl at the bundled cert with
+`SSL_CERT_FILE=<root>/ssl/cacert.pem CURL_CA_BUNDLE=<root>/ssl/cacert.pem` (the
+launcher does this); the rest of the tree stays relocatable regardless.
+
+Validate the staged tree with `checks/validate-bundle.sh <binutils> <bundle>` (or
+`nix flake check --impure`, which builds and checks `.#deploy-bundle-full`).
+
+### By hand
+
+To cherry-pick from the store outputs directly instead:
 
 ```sh
 # assemble bin/ + lib/ from the store outputs

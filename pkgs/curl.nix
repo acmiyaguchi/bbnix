@@ -16,8 +16,9 @@
 # don't need; revisit individually if a consumer wants HTTP/2 etc.
 #
 # --with-ca-bundle bakes an on-device default path matching openssl.nix's
-# --openssldir; the deploy step ships nixpkgs.cacert's cacert.pem there, so
-# verification works with no CURL_CA_BUNDLE/SSL_CERT_FILE wrapper.
+# --openssldir; the deploy bundle ships nixpkgs.cacert's cacert.pem there
+# (<install-root>/ssl/cacert.pem), so bare curl verifies with no
+# CURL_CA_BUNDLE/SSL_CERT_FILE wrapper once unpacked at that root.
 #
 # autoconf cross-build: --host marks it cross so configure skips most run-tests.
 # LIBS=-lsocket because QNX sockets/getaddrinfo live in libsocket.so.3, not libc
@@ -33,11 +34,11 @@
   zlib,
   target ? "arm-unknown-nto-qnx8.0.0eabi",
   sysroot,
-  # Compile-time default CA bundle path, baked via --with-ca-bundle. Matches
-  # openssl.nix's --openssldir; the deploy step ships nixpkgs.cacert's
-  # cacert.pem here. Only a default -- callers can override at runtime
-  # (--cacert, CURLOPT_CAINFO, CURL_CA_BUNDLE).
-  caBundle ? "/accounts/1000/shared/misc/ssl/cacert.pem",
+  # Compile-time default CA bundle path, baked via --with-ca-bundle. The flake
+  # threads the deploy install root here so it lands at <root>/ssl/cacert.pem,
+  # where the bundle stages cacert.pem. Only a default -- callers can override
+  # at runtime (--cacert, CURLOPT_CAINFO, CURL_CA_BUNDLE).
+  caBundle ? "/accounts/1000/shared/misc/bbnix/ssl/cacert.pem",
 }:
 
 let

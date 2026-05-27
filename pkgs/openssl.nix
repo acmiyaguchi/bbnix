@@ -19,6 +19,9 @@
   perl,
   binutils,
   gcc,
+  # On-device trust dir baked as --openssldir; its cacert.pem is curl.nix's
+  # default CA bundle. The flake points this under the deploy install root.
+  opensslDir ? "/accounts/1000/shared/misc/ssl",
   target ? "arm-unknown-nto-qnx8.0.0eabi",
   sysroot,
 }:
@@ -69,7 +72,7 @@ stdenv.mkDerivation (qnx.drvAttrs // rec {
     perl ./Configure linux-generic32 \
       --prefix=$out \
       --libdir=lib \
-      --openssldir=/accounts/1000/shared/misc/ssl \
+      --openssldir=${opensslDir} \
       no-asm no-tests no-engine no-dso no-async threads \
       -lsocket
     runHook postConfigure

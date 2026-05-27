@@ -27,6 +27,14 @@
 
         qnxTarget = "arm-unknown-nto-qnx8.0.0eabi";
 
+        # Canonical on-device install root for the deploy bundle. The tree is
+        # relocatable (libs via LD_LIBRARY_PATH, CA via the launcher's
+        # SSL_CERT_FILE/CURL_CA_BUNDLE), but a couple of paths are baked at build
+        # time and want a fixed default: openssl's trust dir and curl's CA file.
+        # Pointing them under this root means bare curl works when the bundle is
+        # unpacked here, with no launcher env. Override at runtime as needed.
+        installRoot = "/accounts/1000/shared/misc/bbnix";
+
         # The QNX target tree passed as --with-sysroot. Headers live under
         # <sysrootRoot>/usr/include; ARM libs/CRT under <sysrootRoot>/armle-v7/lib.
         sysrootRoot = "${sysrootBase}/target_10_3_1_995/qnx6";
@@ -68,6 +76,7 @@
 
         openssl-qnx = pkgs.callPackage ./pkgs/openssl.nix {
           inherit binutils gcc;
+          opensslDir = "${installRoot}/ssl";
           target = qnxTarget;
           sysroot = sysrootRoot;
         };
@@ -86,6 +95,7 @@
           inherit binutils gcc;
           openssl = openssl-qnx;
           zlib = zlib-qnx;
+          caBundle = "${installRoot}/ssl/cacert.pem";
           target = qnxTarget;
           sysroot = sysrootRoot;
         };
@@ -162,6 +172,21 @@
           target = qnxTarget;
           sysroot = sysrootRoot;
         };
+
+        # Relocatable deploy bundle (issue #4): a bin/ + lib/ + terminfo/ + CA
+        # tree Term50 pins as a flake input and stages under app/native/bbnix.
+        # Variants nest minimal ⊂ ssh ⊂ full; .#deploy-bundle is the full set.
+        mkBundle = variant: pkgs.callPackage ./pkgs/deploy-bundle.nix {
+          inherit variant openssh curl mosh tmux zsh btcrash;
+          ncurses = ncurses-qnx;
+          openssl = openssl-qnx;
+          zlib = zlib-qnx;
+          compat = qnx-compat;
+          cacert = pkgs.cacert;
+        };
+        deploy-bundle-minimal = mkBundle "minimal";
+        deploy-bundle-ssh = mkBundle "ssh";
+        deploy-bundle-full = mkBundle "full";
       in {
         # Recipes live under toolchain/ and pkgs/ and are wired in here as they
         # land. Sequence (see README): toolchain PoC -> ncurses -> openssh ->
@@ -174,7 +199,19 @@
           protobuf = protobuf-qnx;
           libevent = libevent-qnx;
           inherit qnx-compat protobuf-host;
+          inherit deploy-bundle-minimal deploy-bundle-ssh deploy-bundle-full;
+          deploy-bundle = deploy-bundle-full;
         };
+
+        # Builds + validates the full bundle. Like every bbnix build this reads
+        # the impure BBNIX_SYSROOT, so run `nix flake check --impure`. The whole
+        # checks/ dir is staged so validate-bundle.sh finds its validate-elf.sh
+        # sibling in the store.
+        checks.deploy-bundle = pkgs.runCommand "validate-deploy-bundle"
+          { nativeBuildInputs = [ pkgs.bash ]; } ''
+          bash ${./checks}/validate-bundle.sh ${binutils} ${deploy-bundle-full}
+          touch $out
+        '';
 
         devShells.default = pkgs.mkShell {
           name = "bbnix";
