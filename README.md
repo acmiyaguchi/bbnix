@@ -52,10 +52,16 @@ nix develop                          # enters the bbnix shell; reports target + 
 # relaxed sandbox. BBNIX_SYSROOT is read at eval time; an unset value throws.
 BBNIX_SYSROOT=/path/to/bbndk-linux \
   nix build --impure --option sandbox relaxed .#zlib .#openssl .#openssh
+
+# Or build the whole relocatable deploy tree in one shot (Term50 pins this as a
+# flake input). Variants: .#deploy-bundle-minimal / -ssh / -full.
+nix build --impure --option sandbox relaxed .#deploy-bundle
 ```
 
-The userland deploys as a relocatable `bin/` + `lib/` bundle pushed to the device;
-see [`AGENTS.md`](AGENTS.md) for per-package bundle contents and launch env.
+The userland deploys as a relocatable `bin/` + `lib/` + `terminfo/` bundle pushed
+to the device — build it with `.#deploy-bundle` (see above) or assemble it by
+hand. See [`AGENTS.md`](AGENTS.md) for the variants, bundle contents, and launch
+env.
 
 ## License
 
