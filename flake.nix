@@ -68,6 +68,12 @@
         # the BYO sysroot. Suffixed -qnx where the bare name would collide with a
         # host nixpkgs attr (pkgs.zlib is consumed by gcc.nix). Dependency chain:
         # zlib + openssl -> openssh; zlib + openssl -> curl.
+        busybox = pkgs.callPackage ./pkgs/busybox.nix {
+          inherit binutils gcc;
+          target = qnxTarget;
+          sysroot = sysrootRoot;
+        };
+
         zlib-qnx = pkgs.callPackage ./pkgs/zlib.nix {
           inherit binutils gcc;
           target = qnxTarget;
@@ -183,7 +189,7 @@
         # tree Term50 pins as a flake input and stages under app/native/bbnix.
         # Variants nest minimal ⊂ ssh ⊂ full; .#deploy-bundle is the full set.
         mkBundle = variant: pkgs.callPackage ./pkgs/deploy-bundle.nix {
-          inherit variant openssh curl mosh tmux zsh btcrash sh-launcher;
+          inherit variant busybox openssh curl mosh tmux zsh btcrash sh-launcher;
           ncurses = ncurses-qnx;
           openssl = openssl-qnx;
           zlib = zlib-qnx;
@@ -198,7 +204,7 @@
         # land. Sequence (see README): toolchain PoC -> ncurses -> openssh ->
         # tmux + mosh-client -> busybox subset.
         packages = {
-          inherit binutils gcc-stage1 gcc openssh curl mosh tmux zsh btcrash sh-launcher;
+          inherit binutils gcc-stage1 gcc busybox openssh curl mosh tmux zsh btcrash sh-launcher;
           zlib = zlib-qnx;
           openssl = openssl-qnx;
           ncurses = ncurses-qnx;

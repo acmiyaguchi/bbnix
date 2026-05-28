@@ -38,7 +38,7 @@ build throws), or brought into the store via `requireFile` for a pure build
 | `zsh` | 5.9 | device-tested | one static binary; GNU libiconv multibyte (no locale gate) |
 | `ncurses` | 6.4 | built | widec `libncursesw` + terminfo; hard dep for mosh / tmux / TUIs |
 | `libbbnixcompat` | — | built | shim for QNX libc gaps (tsearch, wcwidth, nl_langinfo, C++ ABI) |
-| `busybox` | subset | planned | fills minimal-userland gaps; Linux-isms make it the soft spot |
+| `busybox` | 1.36.1 subset | device-tested | conservative applet set for coreutils/grep/sed/find/tar; QNX getopt/endian/libc patches |
 
 ## Usage
 
