@@ -1,4 +1,4 @@
-# bbnix-env -- activation manifest for the deploy bundle (issue #8).
+# bbnix-env -- activation manifest for the deploy bundle.
 #
 # This is the bundle's source of truth for the env every bbnix consumer must
 # wire before exec'ing a bundled binary: the device loader has no $ORIGIN
@@ -9,7 +9,9 @@
 # fork/exec; both are expected to honor the modes below.
 #
 # Format: <mode> KEY=VALUE per line. $ROOT expands to the bundle root,
-# $HOME to the caller's HOME. Blank lines and `#` comments are ignored.
+# $HOME to the caller's HOME. Blank lines and whole-line `#` comments are
+# ignored; inline `# ...` is NOT stripped -- it would become part of VALUE.
+# Term50 implements the same parser, so the format here is the contract.
 #   set         -- overwrite always (force)
 #   default     -- set only if currently unset/empty
 #   prepend     -- compose: <new> if existing is empty, else <new>:<existing>

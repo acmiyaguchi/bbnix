@@ -24,10 +24,10 @@ root=${bindir%/bin}
 
 # Both the bundled ssh and mosh-client need the from-source libs (libcrypto/
 # libssl/libz/libncursesw/libbbnixcompat); export before either runs. The
-# activation manifest (issue #8) is the single source of truth for which env
-# the bundle needs (PATH/LD_LIBRARY_PATH/TERMINFO/TERM, plus tmux's locale
-# and socket-dir invariants -- no-ops here but harmless). Idempotent if
-# Term49's launcher already applied the manifest.
+# activation manifest is the single source of truth for which env the bundle
+# needs (PATH/LD_LIBRARY_PATH/TERMINFO/TERM, plus tmux's locale and socket-dir
+# invariants -- no-ops here but harmless). Idempotent if Term49's launcher
+# already applied the manifest.
 BBNIX_ROOT=$root . "$root/etc/bbnix-activate"
 
 ssh_cmd="$bindir/ssh"

@@ -182,17 +182,18 @@ consumer).
 
 ```
 # etc/bbnix-env -- $ROOT expands to the bundle root, $HOME to the caller's.
-set         BBNIX_CODESET=UTF-8     # forced -- tmux's nl_langinfo gate
-set         LC_ALL=C                # forced -- QNX setlocale takes only C/POSIX
+# Only whole-line `#` comments are stripped; no inline comments.
+set         BBNIX_CODESET=UTF-8
+set         LC_ALL=C
 set         TERMINFO=$ROOT/terminfo
 prepend     PATH=$ROOT/bin
 prepend     LD_LIBRARY_PATH=$ROOT/lib
-default     TMUX_TMPDIR=$HOME       # soft -- dodge /dev/shmem default
+default     TMUX_TMPDIR=$HOME
 default     TERM=xterm-256color
-set-if-file SSL_CERT_FILE=$ROOT/ssl/cacert.pem      # ssh/full only;
-set-if-file CURL_CA_BUNDLE=$ROOT/ssl/cacert.pem     # the manifest itself
-set-if-file GIT_SSL_CAINFO=$ROOT/ssl/cacert.pem     # encodes the variant
-set-if-dir  SSL_CERT_DIR=$ROOT/etc/ssl/certs        # guard, not consumers.
+set-if-file SSL_CERT_FILE=$ROOT/ssl/cacert.pem
+set-if-file CURL_CA_BUNDLE=$ROOT/ssl/cacert.pem
+set-if-file GIT_SSL_CAINFO=$ROOT/ssl/cacert.pem
+set-if-dir  SSL_CERT_DIR=$ROOT/etc/ssl/certs
 ```
 
 Modes: `set` overwrites, `default` only if unset/empty, `prepend` composes as

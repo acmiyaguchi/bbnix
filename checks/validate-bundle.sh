@@ -88,7 +88,7 @@ if [ -e "$BUNDLE/lib/libssl.so.3" ]; then
   echo "  CA bundle OK"
 fi
 
-# 5. Activation contract (issue #8): both files ship in every variant. The
+# 5. Activation contract: both files ship in every variant. The
 #    set-if-{file,dir} SSL_* entries no-op themselves on minimal where the
 #    cert files are absent. Forced BBNIX_CODESET=UTF-8 is the load-bearing
 #    tmux gate; assert its presence so a future edit can't silently downgrade
@@ -100,6 +100,18 @@ for forced in BBNIX_CODESET=UTF-8 LC_ALL=C; do
   grep -q "^set[[:space:]]\+${forced}[[:space:]]*\$" "$BUNDLE/etc/bbnix-env" \
     || { echo "FAIL: bbnix-env missing forced 'set $forced'"; exit 1; }
 done
+
+# Mode-token whitelist: catch a typo'd manifest line ('prepent', 'setifile')
+# at build time rather than at the shim's runtime warning -- a typo would
+# otherwise ship silently and Term50 would inherit the same gap.
+bad_modes=$(awk '/^[[:space:]]*(#|$)/ { next }
+                 { print $1 }' "$BUNDLE/etc/bbnix-env" \
+            | grep -vxE 'set|default|prepend|set-if-file|set-if-dir' || :)
+if [ -n "$bad_modes" ]; then
+  echo "FAIL: bbnix-env has unknown mode token(s):"
+  printf '  %s\n' $bad_modes
+  exit 1
+fi
 
 # Static checks for footguns that the host-side runtime smoke (which runs
 # under bash) cannot catch -- the device's /bin/sh is an old ksh that
@@ -122,26 +134,32 @@ if grep -vE '^[[:space:]]*#' "$BUNDLE/etc/bbnix-activate" \
   exit 1
 fi
 
-# Smoke-test the shim host-side. Seed a hostile inherited env (bad LC_ALL,
-# wrong BBNIX_CODESET, dirty PATH/LD) to prove force/default/prepend each
-# does what it says -- not just that the shim runs to completion. env -i
-# scrubs everything else so any leaked default is the shim's own doing.
-# Resolve sh before scrubbing -- /seed/bin in the seeded PATH won't have it.
+# Smoke-test the shim host-side. Resolve sh before scrubbing -- /seed/bin in
+# the seeded PATH won't have it. -uc matches the mosh launcher's `set -u`, so
+# a nounset regression in the shim shows up here too.
 SH="$(command -v sh)"
-out=$(env -i HOME=/tmp \
-          PATH=/seed/bin LD_LIBRARY_PATH=/seed/lib \
-          LC_ALL=en_US.UTF-8 TMUX_TMPDIR=/seed/tmp TERM=seed-term \
-          BBNIX_CODESET=BAD \
-        "$SH" -c "BBNIX_ROOT='$BUNDLE' . '$BUNDLE/etc/bbnix-activate' && \
-                  for v in BBNIX_CODESET TERMINFO PATH LD_LIBRARY_PATH \
-                           LC_ALL TMUX_TMPDIR TERM SSL_CERT_FILE; do \
-                    eval \"printf '%s=%s\\n' \\\"\$v\\\" \\\"\\\${\$v-<unset>}\\\"\"; \
-                  done")
 
 _assert_out() {
   case "$out" in *"$1"*) return 0 ;; esac
   echo "FAIL: $2"; echo "$out"; exit 1
 }
+# Single-quote the printf format inside the eval string so the eval re-parse
+# preserves the `\n` for printf to interpret as a newline. Without the inner
+# quotes, eval would consume the backslash and printf gets a literal `n`,
+# which makes failure output unreadable and risks future cross-boundary
+# substring matches in _assert_out.
+_dump_envs='for v in BBNIX_CODESET TERMINFO PATH LD_LIBRARY_PATH LC_ALL \
+                     TMUX_TMPDIR TERM SSL_CERT_FILE SSL_CERT_DIR; do \
+              eval "printf '\''%s=%s\\n'\'' \"\$v\" \"\${$v-<unset>}\""; \
+            done'
+
+# Seed 1: hostile env (bad LC_ALL, wrong BBNIX_CODESET, dirty PATH/LD, plus
+# existing TMUX_TMPDIR/TERM) proves set overwrites and default preserves.
+out=$(env -i HOME=/tmp \
+          PATH=/seed/bin LD_LIBRARY_PATH=/seed/lib \
+          LC_ALL=en_US.UTF-8 TMUX_TMPDIR=/seed/tmp TERM=seed-term \
+          BBNIX_CODESET=BAD \
+        "$SH" -uc "BBNIX_ROOT='$BUNDLE' . '$BUNDLE/etc/bbnix-activate' && $_dump_envs")
 _assert_out "BBNIX_CODESET=UTF-8"               "set BBNIX_CODESET did not overwrite inherited BAD"
 _assert_out "LC_ALL=C"                          "set LC_ALL did not overwrite inherited en_US.UTF-8"
 _assert_out "TERMINFO=$BUNDLE/terminfo"         "set TERMINFO not applied"
@@ -150,13 +168,32 @@ _assert_out "LD_LIBRARY_PATH=$BUNDLE/lib:/seed/lib" "prepend LD_LIBRARY_PATH did
 for kv in "TMUX_TMPDIR=/seed/tmp" "TERM=seed-term"; do
   _assert_out "$kv" "default did not preserve inherited $kv"
 done
-# set-if-file: apply on ssh/full (cacert present), no-op on minimal.
+
+# Seed 2: TMUX_TMPDIR and TERM unset -- proves default actually applies its
+# fallback (the seed-1 test only proves it doesn't clobber, which a no-op
+# 'default' would also satisfy).
+out=$(env -i HOME=/myhome PATH=/seed/bin \
+        "$SH" -uc "BBNIX_ROOT='$BUNDLE' . '$BUNDLE/etc/bbnix-activate' && $_dump_envs")
+_assert_out "TMUX_TMPDIR=/myhome"               "default TMUX_TMPDIR did not apply \$HOME fallback when unset"
+# TERM: the host shell may inject TERM=dumb before the shim runs, so the
+# assertion is "either xterm-256color (true unset) or dumb (host injected)".
+case "$out" in
+  *"TERM=xterm-256color"*|*"TERM=dumb"*) ;;
+  *) echo "FAIL: default TERM did not apply fallback when unset"; echo "$out"; exit 1 ;;
+esac
+
+# set-if-file (SSL_CERT_FILE) and set-if-dir (SSL_CERT_DIR) are distinct code
+# paths -- assert both on ssh/full, both unset on minimal.
 if [ -f "$BUNDLE/ssl/cacert.pem" ]; then
   _assert_out "SSL_CERT_FILE=$BUNDLE/ssl/cacert.pem" \
     "set-if-file SSL_CERT_FILE not applied with cacert present"
+  _assert_out "SSL_CERT_DIR=$BUNDLE/etc/ssl/certs" \
+    "set-if-dir SSL_CERT_DIR not applied with certs dir present"
 else
   _assert_out "SSL_CERT_FILE=<unset>" \
     "set-if-file SSL_CERT_FILE leaked on minimal (no cacert)"
+  _assert_out "SSL_CERT_DIR=<unset>" \
+    "set-if-dir SSL_CERT_DIR leaked on minimal (no certs dir)"
 fi
 echo "  activation manifest OK"
 

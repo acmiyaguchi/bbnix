@@ -2,24 +2,16 @@
 #
 #   BBNIX_ROOT=/path/to/bundle . /path/to/bundle/etc/bbnix-activate
 #
-# Reads etc/bbnix-env (manifest) and applies its rules to the current shell:
-#   set         overwrite always
-#   default     set only if unset/empty
-#   prepend     compose as <new>[:<existing>]
-#   set-if-file set only if the expanded value names an existing regular file
-#   set-if-dir  set only if the expanded value names an existing directory
-# $ROOT in values expands to $BBNIX_ROOT, $HOME to the caller's HOME. The
-# conditional set-if-* modes let the manifest itself encode bundle-variant
-# guards (ssh/full-only paths) so external consumers don't have to hardcode
-# which keys are file-conditional.
+# Reads etc/bbnix-env and applies its rules to the current shell. Format
+# and mode semantics live in the manifest header (etc/bbnix-env) -- the
+# canonical contract that external consumers (Term50) also follow.
 #
 # POSIX sh: works under the device's /bin/sh, busybox sh, bash, and zsh
 # (emulate sh). Pure builtins -- no sed / awk / grep -- so it's safe to source
 # before $PATH has been composed (which is exactly what it itself does).
 #
 # Resolving the script's own path when sourced is non-portable across POSIX
-# shells, so BBNIX_ROOT is required from the caller. The mosh launcher and
-# Term50 both know the root already.
+# shells, so BBNIX_ROOT is required from the caller.
 
 : "${BBNIX_ROOT:?bbnix-activate: BBNIX_ROOT must be set to the bundle root}"
 
