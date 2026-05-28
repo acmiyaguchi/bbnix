@@ -1,0 +1,42 @@
+# bbnix-env -- activation manifest for the deploy bundle (issue #8).
+#
+# This is the bundle's source of truth for the env every bbnix consumer must
+# wire before exec'ing a bundled binary: the device loader has no $ORIGIN
+# (-> LD_LIBRARY_PATH), tmux gates on a UTF-8 locale QNX can't satisfy
+# natively (-> BBNIX_CODESET), and /tmp -> /dev/shmem can't host tmux's
+# socket dir (-> TMUX_TMPDIR). Applied by etc/bbnix-activate (sourceable sh)
+# and by external consumers (e.g. Term50) that need to setenv() before
+# fork/exec; both are expected to honor the modes below.
+#
+# Format: <mode> KEY=VALUE per line. $ROOT expands to the bundle root,
+# $HOME to the caller's HOME. Blank lines and `#` comments are ignored.
+#   set         -- overwrite always (force)
+#   default     -- set only if currently unset/empty
+#   prepend     -- compose: <new> if existing is empty, else <new>:<existing>
+#   set-if-file -- like `set`, but skip the line if VALUE is not a regular file
+#   set-if-dir  -- like `set`, but skip the line if VALUE is not a directory
+#
+# The set-if-* modes encode bundle-variant guards in the manifest itself so
+# external consumers don't need to hardcode which keys are file-conditional.
+
+set         BBNIX_CODESET=UTF-8
+set         TERMINFO=$ROOT/terminfo
+prepend     PATH=$ROOT/bin
+prepend     LD_LIBRARY_PATH=$ROOT/lib
+
+# LC_ALL must be `set`, not `default`: QNX's setlocale rejects every locale
+# name except C/POSIX (see pkgs/files/qnx-compat.c), so a common inherited
+# value like LC_ALL=en_US.UTF-8 (which any modern ssh client exports) crashes
+# the bundled tmux's setlocale("") gate. The "user installs a real locale"
+# escape hatch the issue contemplates does not exist on this platform --
+# BBNIX_CODESET=UTF-8 + LC_ALL=C is the only combination tmux accepts.
+set         LC_ALL=C
+default     TMUX_TMPDIR=$HOME
+default     TERM=xterm-256color
+
+# ssh/full only -- set-if-{file,dir} self-skip on the minimal variant where
+# these targets are absent. No SSL knowledge in the consumer.
+set-if-file SSL_CERT_FILE=$ROOT/ssl/cacert.pem
+set-if-file CURL_CA_BUNDLE=$ROOT/ssl/cacert.pem
+set-if-file GIT_SSL_CAINFO=$ROOT/ssl/cacert.pem
+set-if-dir  SSL_CERT_DIR=$ROOT/etc/ssl/certs

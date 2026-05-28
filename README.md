@@ -60,8 +60,10 @@ nix build --impure --option sandbox relaxed .#deploy-bundle
 
 The userland deploys as a relocatable `bin/` + `lib/` + `terminfo/` bundle pushed
 to the device — build it with `.#deploy-bundle` (see above) or assemble it by
-hand. See [`AGENTS.md`](AGENTS.md) for the variants, bundle contents, and launch
-env.
+hand. The bundle is self-activating: `etc/bbnix-env` declares every env var the
+binaries need and `etc/bbnix-activate` applies it
+(`BBNIX_ROOT=<root> . <root>/etc/bbnix-activate`). See [`AGENTS.md`](AGENTS.md)
+for the variants, bundle contents, and the activation contract.
 
 ## License
 

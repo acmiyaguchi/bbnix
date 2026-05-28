@@ -52,7 +52,16 @@ stdenv.mkDerivation {
 
   installPhase = ''
     runHook preInstall
-    mkdir -p $out/bin $out/lib $out/terminfo
+    mkdir -p $out/bin $out/lib $out/etc $out/terminfo
+
+    # Activation manifest + sourceable shim (issue #8). Ships in every
+    # variant so a consumer can apply the manifest unconditionally; the
+    # ssl/* entries skip themselves at apply time when their target files
+    # are absent (minimal/ssh-less variant). bbnix-activate is mode 644 --
+    # sourceable, not executable; matches the BB10 read-only-app-image
+    # constraint (no +x on packaged scripts, see sh-launcher.c).
+    install -m644 ${./files}/bbnix-env      $out/etc/bbnix-env
+    install -m644 ${./files}/bbnix-activate $out/etc/bbnix-activate
 
     # minimal: interactive shell + multiplexer + BusyBox's conservative POSIX
     # utility subset and their shared deps. tmux/zsh statically embed libevent +

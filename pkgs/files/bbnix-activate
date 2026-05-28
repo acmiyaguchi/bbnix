@@ -1,0 +1,109 @@
+# bbnix-activate -- source me, don't exec me.
+#
+#   BBNIX_ROOT=/path/to/bundle . /path/to/bundle/etc/bbnix-activate
+#
+# Reads etc/bbnix-env (manifest) and applies its rules to the current shell:
+#   set         overwrite always
+#   default     set only if unset/empty
+#   prepend     compose as <new>[:<existing>]
+#   set-if-file set only if the expanded value names an existing regular file
+#   set-if-dir  set only if the expanded value names an existing directory
+# $ROOT in values expands to $BBNIX_ROOT, $HOME to the caller's HOME. The
+# conditional set-if-* modes let the manifest itself encode bundle-variant
+# guards (ssh/full-only paths) so external consumers don't have to hardcode
+# which keys are file-conditional.
+#
+# POSIX sh: works under the device's /bin/sh, busybox sh, bash, and zsh
+# (emulate sh). Pure builtins -- no sed / awk / grep -- so it's safe to source
+# before $PATH has been composed (which is exactly what it itself does).
+#
+# Resolving the script's own path when sourced is non-portable across POSIX
+# shells, so BBNIX_ROOT is required from the caller. The mosh launcher and
+# Term50 both know the root already.
+
+: "${BBNIX_ROOT:?bbnix-activate: BBNIX_ROOT must be set to the bundle root}"
+
+# Pure-shell expansion of "$ROOT" and "$HOME" literals inside a value, in
+# source order. Returns the result by assigning to the global _bbnix_expanded
+# rather than printf'ing through `$(...)` -- $(...) would fork a subshell for
+# every manifest line (~12 forks per activation on the device's /bin/sh).
+# Values are trusted (we ship the manifest), so a hostile $(...) is not a
+# concern.
+_bbnix_expand() {
+	_bbnix_in=$1 _bbnix_expanded=
+	while :; do
+		case $_bbnix_in in
+			*'$ROOT'*'$HOME'*|*'$HOME'*'$ROOT'*)
+				# Both tokens present -- expand whichever has the shorter
+				# (earlier) prefix.
+				_bbnix_pre_root=${_bbnix_in%%'$ROOT'*}
+				_bbnix_pre_home=${_bbnix_in%%'$HOME'*}
+				if [ ${#_bbnix_pre_root} -le ${#_bbnix_pre_home} ]; then
+					_bbnix_expanded=$_bbnix_expanded$_bbnix_pre_root$BBNIX_ROOT
+					_bbnix_in=${_bbnix_in#*'$ROOT'}
+				else
+					_bbnix_expanded=$_bbnix_expanded$_bbnix_pre_home${HOME:-}
+					_bbnix_in=${_bbnix_in#*'$HOME'}
+				fi ;;
+			*'$ROOT'*)
+				_bbnix_expanded=$_bbnix_expanded${_bbnix_in%%'$ROOT'*}$BBNIX_ROOT
+				_bbnix_in=${_bbnix_in#*'$ROOT'} ;;
+			*'$HOME'*)
+				_bbnix_expanded=$_bbnix_expanded${_bbnix_in%%'$HOME'*}${HOME:-}
+				_bbnix_in=${_bbnix_in#*'$HOME'} ;;
+			*)
+				_bbnix_expanded=$_bbnix_expanded$_bbnix_in
+				return 0 ;;
+		esac
+	done
+}
+
+_bbnix_apply_line() {
+	_bbnix_mode=$1; _bbnix_rest=$2
+	_bbnix_key=${_bbnix_rest%%=*}
+	_bbnix_expand "${_bbnix_rest#*=}"
+	_bbnix_val=$_bbnix_expanded
+	case $_bbnix_mode in
+		set-if-file)
+			[ -f "$_bbnix_val" ] || return 0
+			_bbnix_mode=set ;;
+		set-if-dir)
+			[ -d "$_bbnix_val" ] || return 0
+			_bbnix_mode=set ;;
+	esac
+	case $_bbnix_mode in
+		set)
+			eval "export $_bbnix_key=\"\$_bbnix_val\"" ;;
+		default)
+			eval ": \"\${$_bbnix_key:=\$_bbnix_val}\"; export $_bbnix_key" ;;
+		prepend)
+			_bbnix_cur=$(eval "printf %s \"\${$_bbnix_key:-}\"")
+			if [ -n "$_bbnix_cur" ]; then
+				_bbnix_val=$_bbnix_val:$_bbnix_cur
+			fi
+			eval "export $_bbnix_key=\"\$_bbnix_val\"" ;;
+		*)
+			echo "bbnix-activate: unknown mode '$_bbnix_mode' for $_bbnix_key" >&2 ;;
+	esac
+}
+
+while IFS= read -r _bbnix_line; do
+	case $_bbnix_line in
+		''|\#*) continue ;;
+	esac
+	# Split on whitespace into <mode> <rest>; rest is everything after the
+	# first run of whitespace so KEY=VALUE keeps any embedded spaces.
+	_bbnix_mode=${_bbnix_line%%[[:space:]]*}
+	_bbnix_rest=${_bbnix_line#"$_bbnix_mode"}
+	_bbnix_rest=${_bbnix_rest#"${_bbnix_rest%%[![:space:]]*}"}
+	[ -n "$_bbnix_rest" ] || continue
+	_bbnix_apply_line "$_bbnix_mode" "$_bbnix_rest"
+done < "$BBNIX_ROOT/etc/bbnix-env"
+
+# POSIX `unset` may or may not remove functions depending on the shell; pin
+# the kind explicitly. The `|| :` guards shells that complain about an unset
+# of a never-defined name under `set -e`.
+unset -v _bbnix_line _bbnix_mode _bbnix_rest _bbnix_key _bbnix_val _bbnix_cur \
+         _bbnix_in _bbnix_expanded _bbnix_pre_root _bbnix_pre_home \
+         2>/dev/null || :
+unset -f _bbnix_apply_line _bbnix_expand 2>/dev/null || :
