@@ -77,7 +77,10 @@ _bbnix_apply_line() {
 		default)
 			eval ": \"\${$_bbnix_key:=\$_bbnix_val}\"; export $_bbnix_key" ;;
 		prepend)
-			_bbnix_cur=$(eval "printf %s \"\${$_bbnix_key:-}\"")
+			# Read existing value via pure parameter expansion -- a $(...)
+			# subshell here would need an executable `printf`, which the
+			# device's /bin/sh lacks until *after* this very line sets PATH.
+			eval "_bbnix_cur=\${$_bbnix_key:-}"
 			if [ -n "$_bbnix_cur" ]; then
 				_bbnix_val=$_bbnix_val:$_bbnix_cur
 			fi
@@ -87,15 +90,17 @@ _bbnix_apply_line() {
 	esac
 }
 
-while IFS= read -r _bbnix_line; do
-	case $_bbnix_line in
-		''|\#*) continue ;;
+# Read each line as <mode> <rest>. POSIX `read` splits the line on IFS,
+# assigning the first field to $_bbnix_mode and the entire remainder (with
+# leading/trailing IFS stripped) to $_bbnix_rest -- which preserves any
+# embedded whitespace in KEY=VALUE. The pinned IFS is space + tab; that
+# avoids relying on `[[:space:]]` inside `${var%%pat*}`, which the device's
+# /bin/sh treats as a literal-character class rather than a POSIX class
+# (skips every line silently).
+while IFS=' 	' read -r _bbnix_mode _bbnix_rest; do
+	case $_bbnix_mode in
+		''|'#'*) continue ;;
 	esac
-	# Split on whitespace into <mode> <rest>; rest is everything after the
-	# first run of whitespace so KEY=VALUE keeps any embedded spaces.
-	_bbnix_mode=${_bbnix_line%%[[:space:]]*}
-	_bbnix_rest=${_bbnix_line#"$_bbnix_mode"}
-	_bbnix_rest=${_bbnix_rest#"${_bbnix_rest%%[![:space:]]*}"}
 	[ -n "$_bbnix_rest" ] || continue
 	_bbnix_apply_line "$_bbnix_mode" "$_bbnix_rest"
 done < "$BBNIX_ROOT/etc/bbnix-env"
@@ -103,7 +108,7 @@ done < "$BBNIX_ROOT/etc/bbnix-env"
 # POSIX `unset` may or may not remove functions depending on the shell; pin
 # the kind explicitly. The `|| :` guards shells that complain about an unset
 # of a never-defined name under `set -e`.
-unset -v _bbnix_line _bbnix_mode _bbnix_rest _bbnix_key _bbnix_val _bbnix_cur \
+unset -v _bbnix_mode _bbnix_rest _bbnix_key _bbnix_val _bbnix_cur \
          _bbnix_in _bbnix_expanded _bbnix_pre_root _bbnix_pre_home \
          2>/dev/null || :
 unset -f _bbnix_apply_line _bbnix_expand 2>/dev/null || :
