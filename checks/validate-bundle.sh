@@ -88,4 +88,76 @@ if [ -e "$BUNDLE/lib/libssl.so.3" ]; then
   echo "  CA bundle OK"
 fi
 
+# 5. Activation contract (issue #8): both files ship in every variant. The
+#    set-if-{file,dir} SSL_* entries no-op themselves on minimal where the
+#    cert files are absent. Forced BBNIX_CODESET=UTF-8 is the load-bearing
+#    tmux gate; assert its presence so a future edit can't silently downgrade
+#    it to default/soft.
+for f in etc/bbnix-env etc/bbnix-activate; do
+  [ -s "$BUNDLE/$f" ] || { echo "FAIL: missing/empty $f"; exit 1; }
+done
+for forced in BBNIX_CODESET=UTF-8 LC_ALL=C; do
+  grep -q "^set[[:space:]]\+${forced}[[:space:]]*\$" "$BUNDLE/etc/bbnix-env" \
+    || { echo "FAIL: bbnix-env missing forced 'set $forced'"; exit 1; }
+done
+
+# Static checks for footguns that the host-side runtime smoke (which runs
+# under bash) cannot catch -- the device's /bin/sh is an old ksh that
+# (a) does NOT honor [[:class:]] POSIX character classes inside ${var%%pat*}
+#     parameter-expansion patterns (treats them as a literal set of chars),
+#     so any such pattern silently fails to match and the shim skips every
+#     manifest line, and
+# (b) has no `printf` builtin or pre-activation `/usr/bin/printf`, so any
+#     $(printf ...) subshell in the activate fails *before* PATH is composed
+#     -- silently dropping the existing PATH if used inside `prepend`.
+# Both bugs were caught by on-device smoke against a Q10; these greps stop
+# them from coming back.
+if grep -vE '^[[:space:]]*#' "$BUNDLE/etc/bbnix-activate" | grep -n '\[\[:' >&2; then
+  echo "FAIL: bbnix-activate uses [[:class:]] POSIX character classes -- not portable to QNX /bin/sh"
+  exit 1
+fi
+if grep -vE '^[[:space:]]*#' "$BUNDLE/etc/bbnix-activate" \
+   | grep -nE '\$\((printf|sed|awk|grep)' >&2; then
+  echo "FAIL: bbnix-activate forks an external (printf/sed/awk/grep) -- not safe before PATH is composed"
+  exit 1
+fi
+
+# Smoke-test the shim host-side. Seed a hostile inherited env (bad LC_ALL,
+# wrong BBNIX_CODESET, dirty PATH/LD) to prove force/default/prepend each
+# does what it says -- not just that the shim runs to completion. env -i
+# scrubs everything else so any leaked default is the shim's own doing.
+# Resolve sh before scrubbing -- /seed/bin in the seeded PATH won't have it.
+SH="$(command -v sh)"
+out=$(env -i HOME=/tmp \
+          PATH=/seed/bin LD_LIBRARY_PATH=/seed/lib \
+          LC_ALL=en_US.UTF-8 TMUX_TMPDIR=/seed/tmp TERM=seed-term \
+          BBNIX_CODESET=BAD \
+        "$SH" -c "BBNIX_ROOT='$BUNDLE' . '$BUNDLE/etc/bbnix-activate' && \
+                  for v in BBNIX_CODESET TERMINFO PATH LD_LIBRARY_PATH \
+                           LC_ALL TMUX_TMPDIR TERM SSL_CERT_FILE; do \
+                    eval \"printf '%s=%s\\n' \\\"\$v\\\" \\\"\\\${\$v-<unset>}\\\"\"; \
+                  done")
+
+_assert_out() {
+  case "$out" in *"$1"*) return 0 ;; esac
+  echo "FAIL: $2"; echo "$out"; exit 1
+}
+_assert_out "BBNIX_CODESET=UTF-8"               "set BBNIX_CODESET did not overwrite inherited BAD"
+_assert_out "LC_ALL=C"                          "set LC_ALL did not overwrite inherited en_US.UTF-8"
+_assert_out "TERMINFO=$BUNDLE/terminfo"         "set TERMINFO not applied"
+_assert_out "PATH=$BUNDLE/bin:/seed/bin"        "prepend PATH did not compose with /seed/bin"
+_assert_out "LD_LIBRARY_PATH=$BUNDLE/lib:/seed/lib" "prepend LD_LIBRARY_PATH did not compose with /seed/lib"
+for kv in "TMUX_TMPDIR=/seed/tmp" "TERM=seed-term"; do
+  _assert_out "$kv" "default did not preserve inherited $kv"
+done
+# set-if-file: apply on ssh/full (cacert present), no-op on minimal.
+if [ -f "$BUNDLE/ssl/cacert.pem" ]; then
+  _assert_out "SSL_CERT_FILE=$BUNDLE/ssl/cacert.pem" \
+    "set-if-file SSL_CERT_FILE not applied with cacert present"
+else
+  _assert_out "SSL_CERT_FILE=<unset>" \
+    "set-if-file SSL_CERT_FILE leaked on minimal (no cacert)"
+fi
+echo "  activation manifest OK"
+
 echo "== PASS ($BUNDLE) =="

@@ -154,9 +154,12 @@ result/ssl/cacert.pem                    # ssh/full: WebPKI CA, from nixpkgs.cac
 result/etc/ssl/certs/ca-certificates.crt #          (Debian-style path too)
 ```
 
-The bundle is relocatable — no `/nix/store` runtime assumptions. The launcher
-sets `LD_LIBRARY_PATH=<root>/lib TERMINFO=<root>/terminfo TERM=xterm-256color`
-(plus `LC_ALL=C BBNIX_CODESET=UTF-8` for tmux).
+The bundle is relocatable — no `/nix/store` runtime assumptions. It also ships
+its own activation manifest (`etc/bbnix-env`) and a sourceable POSIX-sh shim
+(`etc/bbnix-activate`) that establishes the launch env every bundled binary
+needs — see **Activation** below. The bundled `mosh` launcher already sources
+it; external consumers (Term50) should apply the same manifest rather than
+re-deriving bbnix's own invariants.
 
 The canonical install root is **`/accounts/1000/shared/misc/bbnix`** (flake.nix's
 `installRoot`). curl's compile-time CA default and openssl's `--openssldir` are
@@ -168,6 +171,70 @@ launcher does this); the rest of the tree stays relocatable regardless.
 
 Validate the staged tree with `checks/validate-bundle.sh <binutils> <bundle>` (or
 `nix flake check --impure`, which builds and checks `.#deploy-bundle-full`).
+
+### Activation (`etc/bbnix-env` + `etc/bbnix-activate`)
+
+The bundle is self-activating: a declarative manifest carries every env var
+the bundled binaries need (the device loader has no `$ORIGIN`, tmux gates on
+a UTF-8 locale QNX can't satisfy natively, and `/tmp → /dev/shmem` can't host
+tmux's socket dir — all bbnix-specific knowledge, none of it derivable by the
+consumer).
+
+```
+# etc/bbnix-env -- $ROOT expands to the bundle root, $HOME to the caller's.
+set         BBNIX_CODESET=UTF-8     # forced -- tmux's nl_langinfo gate
+set         LC_ALL=C                # forced -- QNX setlocale takes only C/POSIX
+set         TERMINFO=$ROOT/terminfo
+prepend     PATH=$ROOT/bin
+prepend     LD_LIBRARY_PATH=$ROOT/lib
+default     TMUX_TMPDIR=$HOME       # soft -- dodge /dev/shmem default
+default     TERM=xterm-256color
+set-if-file SSL_CERT_FILE=$ROOT/ssl/cacert.pem      # ssh/full only;
+set-if-file CURL_CA_BUNDLE=$ROOT/ssl/cacert.pem     # the manifest itself
+set-if-file GIT_SSL_CAINFO=$ROOT/ssl/cacert.pem     # encodes the variant
+set-if-dir  SSL_CERT_DIR=$ROOT/etc/ssl/certs        # guard, not consumers.
+```
+
+Modes: `set` overwrites, `default` only if unset/empty, `prepend` composes as
+`<new>[:<existing>]`, and `set-if-file`/`set-if-dir` apply `set` only when
+the (expanded) value names an existing file/directory — so the same manifest
+ships in every variant and self-skips on minimal. `BBNIX_CODESET=UTF-8` and
+`LC_ALL=C` are both `set` (not `default`): QNX's `setlocale` rejects every
+locale name except `C`/`POSIX` (see `pkgs/files/qnx-compat.c`), so a common
+inherited `LC_ALL=en_US.UTF-8` (any modern ssh client exports it) would
+crash the bundled tmux's `setlocale("")` gate. Forcing `LC_ALL=C` is the
+only POSIX-locale value tmux accepts, and `BBNIX_CODESET` independently
+satisfies the `nl_langinfo(CODESET)` gate.
+
+Two ways to apply:
+
+- **Shell** (interactive ssh, scripts, the bundled `mosh` launcher):
+
+  ```sh
+  BBNIX_ROOT=/accounts/1000/shared/misc/bbnix \
+    . /accounts/1000/shared/misc/bbnix/etc/bbnix-activate
+  ```
+
+  POSIX-sh, sourceable under `/bin/sh` / busybox-sh / bash / zsh-as-sh. Pure
+  shell builtins — no `sed`/`awk`/`grep` — so it's safe to source before
+  `PATH` has been composed. `BBNIX_ROOT` is required from the caller —
+  resolving a sourced script's own path is non-portable in POSIX sh.
+
+- **Programmatic** (Term50): parse `etc/bbnix-env` in C and apply each line
+  before `fork`/`exec`, so the env reaches `zsh`, `sh -c`, and tmux alike.
+  Each mode maps to a straightforward C step:
+  - `set`     → `setenv(k, v, 1)`
+  - `default` → `if (!getenv(k) || !*getenv(k)) setenv(k, v, 1);` (the shim
+    treats an exported-but-empty value as unset, matching `${VAR:=...}`;
+    plain `setenv(k, v, 0)` would leave an empty inherited value in place)
+  - `prepend` → compose `v[:existing]` and `setenv(k, …, 1)`
+  - `set-if-file`/`set-if-dir` → `stat()` the expanded value; `setenv(k, v, 1)`
+    only on success
+
+  Term50's `setup_bbnix_env` (`src/main.c`) is the existing consumer;
+  converting it to read this manifest replaces the hardcoded list — and,
+  importantly, the SSL/variant skip policy stays in bbnix where it can
+  evolve without a Term50 change.
 
 ### By hand
 
@@ -203,12 +270,13 @@ Term49 invokes `mosh-client` directly.
 
 **tmux** deploys with only `libncursesw.so.6` + `libbbnixcompat.so.1` in `lib/`
 (libevent and the pty objects are statically embedded; `libsocket`/`libm`/`libc`
-are on the device). Launch with `LD_LIBRARY_PATH=<dir>/lib TERMINFO=<dir>/terminfo
-TERM=xterm-256color LC_ALL=C BBNIX_CODESET=UTF-8`, then `tmux new`. The `LC_ALL=C
-BBNIX_CODESET=UTF-8` pair is required: tmux gates on a UTF-8 `LC_CTYPE`, but QNX's
+are on the device). Launch via the bundle's activation shim — `BBNIX_ROOT=<dir>
+. <dir>/etc/bbnix-activate; tmux new` — which sets the `LC_ALL=C
+BBNIX_CODESET=UTF-8` pair tmux's UTF-8 `LC_CTYPE` gate requires (QNX's
 `setlocale` rejects every `.UTF-8` locale name, so `LC_ALL=C` keeps `setlocale`
-happy while `BBNIX_CODESET` makes `libbbnixcompat`'s `nl_langinfo(CODESET)` report
-UTF-8.
+happy while `BBNIX_CODESET` makes `libbbnixcompat`'s `nl_langinfo(CODESET)`
+report UTF-8) plus the writable `TMUX_TMPDIR=$HOME` that dodges the
+`/dev/shmem` socket-dir failure.
 
 **zsh** deploys into the *same* bundle as tmux — it reuses `libncursesw.so.6` +
 `libbbnixcompat.so.1` in `lib/` and the terminfo DB (`libiconv.so.1`/`libsocket`/
