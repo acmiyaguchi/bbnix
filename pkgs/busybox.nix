@@ -158,7 +158,13 @@ unsigned long long bb_makedev(unsigned major, unsigned minor) FAST_FUNC;
       ln -s ${binutils}/bin/${target}-$tool cross-bin/${target}-$tool
     done
 
+    # Inject the QNX gap flags from the single source of truth in qnx-common
+    # rather than hardcoding them in the checked-in .config (-include stddef.h
+    # for [[qnx-unistd-size-t-stddef-gap]]; -DSA_RESTART=0 for QNX's omitted
+    # signal flag). The .config carries an @QNX_CFLAGS@ placeholder.
     cp ${./files/busybox.config} .config
+    substituteInPlace .config \
+      --replace '@QNX_CFLAGS@' '${qnx.stddefFlag} ${qnx.saRestartFlag}'
     make oldconfig < /dev/null >/dev/null
     runHook postConfigure
   '';

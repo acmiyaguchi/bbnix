@@ -58,15 +58,18 @@ stdenv.mkDerivation {
     # utility subset and their shared deps. tmux/zsh statically embed libevent +
     # all modules, so only ncursesw + the libc-gap compat shim need shipping. cp
     # -L derefs each soname symlink to a regular file under that name (e.g.
-    # libncursesw.so.6 from libncursesw.so.6.4). BusyBox applet symlinks are
-    # relative within bin/, so preserve them.
+    # libncursesw.so.6 from libncursesw.so.6.4). BusyBox installs applets across
+    # bin/usr/bin/sbin/usr/sbin; re-point each as a relative symlink to the one
+    # real busybox binary, flattened into bin/.
     cp ${zsh}/bin/zsh   $out/bin/
     cp ${tmux}/bin/tmux $out/bin/
     cp ${busybox}/bin/busybox $out/bin/
-    for applet in ${busybox}/bin/* ${busybox}/usr/bin/*; do
-      name="$(basename "$applet")"
+    shopt -s nullglob
+    for applet in ${busybox}/bin/* ${busybox}/usr/bin/* ${busybox}/sbin/* ${busybox}/usr/sbin/*; do
+      name="''${applet##*/}"
       [ "$name" = busybox ] || ln -sf busybox "$out/bin/$name"
     done
+    shopt -u nullglob
     cp -L ${ncurses}/lib/libncursesw.so.6 $out/lib/
     cp -L ${compat}/lib/libbbnixcompat.so.1 $out/lib/
     cp -r ${ncurses}/share/terminfo/. $out/terminfo/
