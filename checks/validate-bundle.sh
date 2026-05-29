@@ -77,6 +77,15 @@ find "$BUNDLE/terminfo" -name 'xterm-256color' -print -quit | grep -q . \
   || { echo "FAIL: terminfo/ has no xterm-256color entry"; exit 1; }
 echo "  terminfo OK"
 
+# 3b. zsh ships in every variant, so its function tree (the completion system)
+#     and the inert reference rc must travel with it. Key off compinit so a
+#     truncated copy can't silently strip the completion functions.
+find "$BUNDLE/share/zsh" -path '*/functions/compinit' -print -quit | grep -q . \
+  || { echo "FAIL: share/zsh/ has no functions/compinit (completion tree missing)"; exit 1; }
+[ -f "$BUNDLE/share/zsh/bbnix-example.zshrc" ] \
+  || { echo "FAIL: missing share/zsh/bbnix-example.zshrc"; exit 1; }
+echo "  zsh functions OK"
+
 # 4. A bundle that ships the from-source TLS stack (libssl) must also carry the
 #    relocatable trust store its HTTPS tools verify against — they travel
 #    together in the ssh/full variants. Key off the lib, not an arbitrary tool.

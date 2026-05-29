@@ -111,13 +111,39 @@ stdenv.mkDerivation (qnx.drvAttrs // rec {
     runHook postInstall
   '';
 
+  # These are ARM/QNX target artifacts, so the default patchShebangs (which
+  # rewrites a function's #!/bin/sh to the host build's bash store path) is both
+  # meaningless and a /nix/store leak -- it would re-mangle `harden` *after* the
+  # scrub below. Disable it; the deploy-bundle disables it for the same reason.
+  dontPatchShebangs = true;
+
   # Ship NO RPATH: the device's QNX loader does not expand $ORIGIN, so deploy
   # sets LD_LIBRARY_PATH=<libdir>. install lays down bin/zsh + a bin/zsh-5.9
-  # hardlink. See [[bbnix-openssh-userland]].
+  # hardlink. See [[bbnix-openssh-userland]]. Done in postFixup (after the
+  # fixupPhase) so nothing downstream re-introduces a store path.
+  #
+  # Same phase, scrub the build-prefix $out (a /nix/store path) out of the
+  # shipped function tree so the deploy-bundle stays store-path-free
+  # (checks/validate-bundle.sh rejects any /nix/store substring in a text
+  # artifact). Two leak sites:
+  #   - run-help/_run-help bake $out as the HELPDIR default; both honor $HELPDIR
+  #     at runtime (the bundle re-seeds it relocatably), so drop the default.
+  #   - harden carries a #!/nix/store/...-bash shebang; it's an autoloaded zsh
+  #     function, never exec'd, so the shebang is cosmetic -> /bin/sh.
+  # The guard makes a future zsh bump that bakes a new path fail here loudly
+  # rather than later in flake-check.
   postFixup = ''
     for f in $out/bin/*; do
       patchelf --remove-rpath "$f"
     done
+
+    fns=$out/share/zsh/${version}/functions
+    sed -i 's#:-/nix/store/[^}]*/help}#:-}#' "$fns/run-help" "$fns/_run-help"
+    sed -i '1s|^#!/nix/store/[^ ]*|#!/bin/sh|' "$fns/harden"
+    if grep -rlI /nix/store "$out/share/zsh"; then
+      echo "zsh.nix: unscrubbed /nix/store path in share/zsh (see above)" >&2
+      exit 1
+    fi
   '';
 
   meta = {
