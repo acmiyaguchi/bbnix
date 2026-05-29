@@ -52,7 +52,7 @@ stdenv.mkDerivation {
 
   installPhase = ''
     runHook preInstall
-    mkdir -p $out/bin $out/lib $out/etc $out/terminfo
+    mkdir -p $out/bin $out/lib $out/etc $out/terminfo $out/share
 
     # Activation manifest + sourceable shim. Ships in every variant so a
     # consumer can apply the manifest unconditionally; the ssl/* entries
@@ -82,6 +82,17 @@ stdenv.mkDerivation {
     cp -L ${ncurses}/lib/libncursesw.so.6 $out/lib/
     cp -L ${compat}/lib/libbbnixcompat.so.1 $out/lib/
     cp -r ${ncurses}/share/terminfo/. $out/terminfo/
+
+    # zsh's autoloadable functions + completion system + help. The binary bakes
+    # its $fpath default into the (absent) nix store, so the manifest re-seeds
+    # FPATH/HELPDIR relocatably from $ROOT (etc/bbnix-env); this only makes the
+    # functions discoverable -- users still run `compinit` in their own ~/.zshrc.
+    # cp -rL derefs the help/ symlinks to regular files (the tree ships
+    # symlink-free, per the soname cp -L policy above).
+    cp -rL ${zsh}/share/zsh $out/share/zsh
+    chmod u+w $out/share/zsh   # store copy is read-only; make room for the rc below
+    # Inert reference rc -- NOT auto-loaded; users copy what they want to ~/.zshrc.
+    install -m644 ${./files}/bbnix-example.zshrc $out/share/zsh/bbnix-example.zshrc
 
   '' + lib.optionalString hasSsh ''
     # ssh: OpenSSH client tools + the from-source crypto/zlib they link (the

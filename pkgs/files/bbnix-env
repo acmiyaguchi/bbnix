@@ -36,6 +36,16 @@ set         LC_ALL=C
 default     TMUX_TMPDIR=$HOME
 default     TERM=xterm-256color
 
+# zsh: make the shipped completion functions + run-help discoverable. The binary
+# bakes its $fpath default into the (absent) nix store, so re-seed it from $ROOT.
+# `prepend` composes with any inherited FPATH. Users still wire `autoload -Uz
+# compinit && compinit` (and their own prefs) in ~/.zshrc -- this only makes the
+# functions findable. NOTE: the `5.9` segment tracks the pinned zsh version
+# (pkgs/zsh.nix) -- bump both together. FPATH is also read by the device's ksh
+# /bin/sh but is harmless there (ksh only autoloads `typeset -fu` names).
+prepend     FPATH=$ROOT/share/zsh/5.9/functions:$ROOT/share/zsh/site-functions
+set         HELPDIR=$ROOT/share/zsh/5.9/help
+
 # ssh/full only -- set-if-{file,dir} self-skip on the minimal variant where
 # these targets are absent. No SSL knowledge in the consumer.
 set-if-file SSL_CERT_FILE=$ROOT/ssl/cacert.pem
