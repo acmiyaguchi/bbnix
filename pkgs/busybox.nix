@@ -2,10 +2,12 @@
 # BusyBox 1.36.1 cross-built for arm-unknown-nto-qnx8.0.0eabi
 # (BlackBerry 10 / QNX 8 ARM).
 #
-# BusyBox is Linux-first, so this is intentionally a conservative applet subset:
-# basic coreutils, grep/sed/find/xargs, tar/gzip/bzip2/xz, and terminal clear /
-# reset / resize. Applets that assume Linux-only APIs (/proc, mount, utimensat,
-# richer termios, etc.) stay disabled until they are ported and device-tested.
+# BusyBox is Linux-first, so applets and feature flags that assume Linux-only
+# APIs (/proc, mount, utimensat, richer termios, etc.) stay disabled until they
+# can be ported and device-tested. zsh ships separately, so BusyBox's own ash
+# is off; what is enabled is the coreutils / findutils / grep / sed / tar /
+# gzip / bzip2 / xz family, vi, less, diff / patch / cmp, bc, su (for elevation
+# on rooted devices), and terminal helpers (clear / reset / resize).
 {
   stdenv,
   lib,
@@ -97,6 +99,17 @@ extern int vasprintf'
       --replace '#if ENABLE_SELINUX' '#if defined(__QNXNTO__)
 # define itoa bb_itoa
 # define utoa bb_utoa
+/* QNX libc lacks memrchr; vi.c is the only caller. Guarded because the
+   surrounding anchor matches several times in libbb.h. */
+# ifndef BBNIX_QNX_MEMRCHR_DEFINED
+#  define BBNIX_QNX_MEMRCHR_DEFINED
+static inline void *bb_memrchr(const void *_s, int _c, size_t _n) {
+	const unsigned char *_p = (const unsigned char *)_s + _n;
+	while (_n--) if (*--_p == (unsigned char)_c) return (void *)_p;
+	return (void *)0;
+}
+#  define memrchr bb_memrchr
+# endif
 #endif
 
 #if ENABLE_SELINUX' \
@@ -143,6 +156,37 @@ unsigned long long bb_makedev(unsigned major, unsigned minor) FAST_FUNC;
 	memcpy(t, s, len);
 	t[len] = 0;
 	return t;'
+
+    # QNX has no <syslog.h>. BusyBox's verror_msg.c and loginutils/su.c
+    # unconditionally include it, then guard the actual openlog/syslog/closelog
+    # call sites with a runtime `if (ENABLE_FEATURE_*_SYSLOG)` constant fold.
+    # We keep those features off, so the calls are dead -- the optimizer drops
+    # them at -O -- but the symbols still have to resolve at compile time.
+    # Drop a no-op stub into BusyBox's own include/ (which sits ahead of the
+    # system include path), satisfying both the macro and prototype lookups.
+    cat > include/syslog.h <<'EOF'
+#ifndef _BBNIX_SYSLOG_STUB
+#define _BBNIX_SYSLOG_STUB
+/* QNX has no <syslog.h>; bbnix supplies a no-op stub here so that BusyBox's
+   syslog-gated branches (FEATURE_*_SYSLOG, all left off) still compile. The
+   optimizer drops the dead calls; nothing links against a real libsyslog. */
+#define LOG_PID      0
+#define LOG_CONS     0
+#define LOG_NDELAY   0
+#define LOG_AUTH     0
+#define LOG_AUTHPRIV 0
+#define LOG_DAEMON   0
+#define LOG_NOTICE   0
+#define LOG_WARNING  0
+#define LOG_ERR      0
+#define LOG_INFO     0
+#define LOG_DEBUG    0
+static inline void openlog(const char *_i, int _o, int _f) { (void)_i; (void)_o; (void)_f; }
+static inline void syslog(int _p, const char *_f, ...) { (void)_p; (void)_f; }
+static inline void closelog(void) { }
+static inline int  setlogmask(int _m) { (void)_m; return 0; }
+#endif
+EOF
   '';
 
   configurePhase = ''
@@ -182,7 +226,7 @@ unsigned long long bb_makedev(unsigned major, unsigned minor) FAST_FUNC;
   '';
 
   meta = {
-    description = "BusyBox ${version} conservative applet subset cross-built for BlackBerry 10 / QNX 8 ARM (${target})";
+    description = "BusyBox ${version} userland (vi, less, coreutils / find / grep / sed / tar / xz, bc, su, ...) cross-built for BlackBerry 10 / QNX 8 ARM (${target})";
     license = lib.licenses.gpl2Only;
     platforms = [ "x86_64-linux" ];
   };
