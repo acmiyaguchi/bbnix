@@ -120,11 +120,25 @@ addr=$client_ip
 [ -n "$addr" ] || addr=$ssh_ip
 [ -n "$addr" ] || addr=$sship
 
+# Redact the MOSH session key before persisting the handshake: $out contains
+# the "MOSH CONNECT <port> <key>" line, and <key> is the AES session secret
+# (the same value exported as $MOSH_KEY). Upstream mosh keeps it off disk; so
+# do we. $key is non-empty here (guarded above) and is a high-entropy base64
+# token appearing exactly once, so a first-occurrence strip is safe. Pure
+# parameter expansion -- the device /bin/sh has no sed/printf and no ${var//}.
+safe_out=$out
+if [ -n "$key" ]; then
+	case $safe_out in
+		*"$key"*)
+			safe_out=${safe_out%%"$key"*}"<redacted>"${safe_out#*"$key"} ;;
+	esac
+fi
+
 # Breadcrumb (small, overwritten each run; readable over ssh for debugging).
 {
 	echo "host=$host client_ip=[$client_ip] ssh_ip=[$ssh_ip] sship=[$sship] => addr=[$addr] port=[$port]"
 	echo "--- raw ssh/mosh-server output ---"
-	echo "$out"
+	echo "$safe_out"
 } > "$HOME/.mosh-debug.log" 2>/dev/null
 
 if [ -z "$addr" ]; then
