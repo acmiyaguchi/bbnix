@@ -1,0 +1,67 @@
+--- a/client.c
++++ b/client.c
+@@ -474,12 +474,38 @@
+ 		    caps[i], strlen(caps[i]) + 1);
+ 	}
+ 
++#ifdef __QNXNTO__
++	/*
++	 * QNX corrupts an AF_UNIX recvmsg (both the data bytes and the fd of
++	 * that read are lost) when SCM_RIGHTS carries a pty (resource-manager)
++	 * fd, which silently truncates the identify handshake and drops the
++	 * trailing MSG_IDENTIFY_DONE.  Decide per fd: never pass a tty fd -- the
++	 * server reopens the terminal by name instead (see __QNXNTO__ in
++	 * server-client.c) -- but keep passing non-tty fds (e.g. control-mode
++	 * pipes), which transfer correctly.
++	 */
++	if (isatty(STDIN_FILENO))
++		proc_send(client_peer, MSG_IDENTIFY_STDIN, -1, NULL, 0);
++	else {
++		if ((fd = dup(STDIN_FILENO)) == -1)
++			fatal("dup failed");
++		proc_send(client_peer, MSG_IDENTIFY_STDIN, fd, NULL, 0);
++	}
++	if (isatty(STDOUT_FILENO))
++		proc_send(client_peer, MSG_IDENTIFY_STDOUT, -1, NULL, 0);
++	else {
++		if ((fd = dup(STDOUT_FILENO)) == -1)
++			fatal("dup failed");
++		proc_send(client_peer, MSG_IDENTIFY_STDOUT, fd, NULL, 0);
++	}
++#else
+ 	if ((fd = dup(STDIN_FILENO)) == -1)
+ 		fatal("dup failed");
+ 	proc_send(client_peer, MSG_IDENTIFY_STDIN, fd, NULL, 0);
+ 	if ((fd = dup(STDOUT_FILENO)) == -1)
+ 		fatal("dup failed");
+ 	proc_send(client_peer, MSG_IDENTIFY_STDOUT, fd, NULL, 0);
++#endif
+ 
+ 	pid = getpid();
+ 	proc_send(client_peer, MSG_IDENTIFY_CLIENTPID, -1, &pid, sizeof pid);
+--- a/server-client.c
++++ b/server-client.c
+@@ -3094,6 +3094,23 @@
+ #ifdef __CYGWIN__
+ 	c->fd = open(c->ttyname, O_RDWR|O_NOCTTY);
+ #endif
++#ifdef __QNXNTO__
++	/*
++	 * QNX cannot pass a tty fd over the socket (SCM_RIGHTS with a pty fd
++	 * corrupts the imsg stream), so the client sends -1 for any tty fd and
++	 * we reopen the terminal here by the name the client sent.  Only fill
++	 * in fds that are actually missing, so control-mode clients keep the
++	 * pipe fds they did pass.  out_fd is only consumed by control clients
++	 * (a normal attach closes it again right below), so reopen it only for
++	 * those.
++	 */
++	if (*c->ttyname != '\0') {
++		if (c->fd == -1)
++			c->fd = open(c->ttyname, O_RDWR|O_NOCTTY);
++		if ((c->flags & CLIENT_CONTROL) && c->out_fd == -1)
++			c->out_fd = open(c->ttyname, O_RDWR|O_NOCTTY);
++	}
++#endif
+ 
+ 	if (c->flags & CLIENT_CONTROL)
+ 		control_start(c);

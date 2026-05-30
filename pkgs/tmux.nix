@@ -41,6 +41,19 @@ stdenv.mkDerivation (qnx.drvAttrs // rec {
   # bison: tmux regenerates its cmd-parse.y grammar at build time (AC_PROG_YACC).
   nativeBuildInputs = [ pkg-config patchelf bison ];
 
+  # QNX interactive-attach fix. Passing a pty (resource-manager) fd over the
+  # client/server AF_UNIX socket via SCM_RIGHTS corrupts the QNX recvmsg --
+  # both the fd AND the inline data bytes of that read are lost -- which drops
+  # the IDENTIFY_STDIN..IDENTIFY_DONE batch of the attach handshake. Without
+  # IDENTIFY_DONE the server never sets CLIENT_IDENTIFIED, never drains the
+  # client's command queue, and the queued attach-session never runs (blank
+  # hang, server at 0% CPU). The patch stops the QNX client from passing the
+  # tty fd and has the server reopen the terminal by the name the client
+  # already sends -- exactly tmux's own __CYGWIN__ workaround, extended to QNX.
+  # Detached paths (new-session -d/send-keys/capture-pane) pass a pipe fd,
+  # which is unaffected, which is why only interactive attach was broken.
+  patches = [ ./patches/tmux-3.5a-qnx-attach.patch ];
+
   # QNX's <limits.h> #undefs IOV_MAX under __EXT_XOPEN_EX (it's the runtime
   # sysconf(_SC_IOV_MAX) value there, not a compile-time constant), so a -D
   # can't survive. tmux's bundled imsg sizes a stack `iovec[IOV_MAX]`; add the
